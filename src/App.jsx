@@ -178,7 +178,7 @@ async function analyzeWithRetry(imageBase64, mediaType, includeContext, maxAttem
 
 // ---------- Daily market pulse (independent of chart upload) ----------
 
-const NEWS_SYSTEM_PROMPT = `You produce a short daily market news digest. Use web search (2-3 focused queries max) to find what is genuinely moving markets today across crypto, equities/macro, and geopolitics/macro-relevant world events (e.g. central bank moves, major economic data, significant geopolitical developments affecting markets).
+const NEWS_SYSTEM_PROMPT = `You produce a short daily market news digest. Use web search (1-2 focused queries max, prioritize speed) to find what is genuinely moving markets today across crypto, equities/macro, and geopolitics/macro-relevant world events (e.g. central bank moves, major economic data, significant geopolitical developments affecting markets).
 
 Rules:
 - Purely informational and neutral in tone. Never recommend buying, selling, or any trading action. No price predictions.
@@ -356,6 +356,11 @@ function useStagedProgress(active, stages) {
 // ---------- App ----------
 
 export default function SmartTrade() {
+  // Only visible to you: open the site with ?dev=1 at the end of the URL
+  // (e.g. https://your-site.vercel.app/?dev=1) to reveal the testing skip
+  // button. Regular visitors never see it.
+  const isDevMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("dev") === "1";
+
   const [view, setView] = useState("welcome"); // 'welcome' | 'pricing' | 'landing' | 'app' | 'news' | 'auth'
   const [session, setSession] = useState(null); // { accessToken, email } | null
   const [authMode, setAuthMode] = useState("signup"); // 'signup' | 'signin'
@@ -482,7 +487,14 @@ export default function SmartTrade() {
     setHistoryLoading(true);
     try {
       const rows = await supabaseRest("analyses?select=*&order=ts.desc", { accessToken: session.accessToken });
-      setHistoryItems((rows || []).map(dbRowToRecord));
+      const fetched = (rows || []).map(dbRowToRecord);
+      // Merge rather than overwrite: a save that hasn't reached the
+      // database yet (still "local-...") shouldn't vanish just because
+      // we refreshed the list before it landed.
+      setHistoryItems((prev) => {
+        const localOnly = prev.filter((p) => String(p.id).startsWith("local-"));
+        return [...localOnly, ...fetched].sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      });
       setStorageUnavailable(false);
     } catch (err) {
       console.warn("Couldn't load history from Supabase:", err);
@@ -526,7 +538,7 @@ export default function SmartTrade() {
     setNewsError(null);
     setNewsErrorDetail(null);
     try {
-      const data = await fetchDailyNewsWithRetry(3, 15000);
+      const data = await fetchDailyNewsWithRetry(2, 40000);
       setNews(data);
       setNewsFetchedAt(Date.now());
     } catch (err) {
@@ -835,7 +847,7 @@ export default function SmartTrade() {
     try {
       let parsed;
       try {
-        parsed = await analyzeWithRetry(imageBase64, mediaType, includeContext, 3, includeContext ? 25000 : 20000);
+        parsed = await analyzeWithRetry(imageBase64, mediaType, includeContext, 3, includeContext ? 40000 : 20000);
       } catch (firstErr) {
         if (includeContext) {
           console.warn("Context-enabled analysis failed, retrying without context:", firstErr.message);
@@ -1414,13 +1426,15 @@ export default function SmartTrade() {
             Your account keeps your Track Record saved across sessions and devices.
           </p>
 
-          <button
-            onClick={() => setView("pricing")}
-            className="btn mono"
-            style={{ width: "100%", padding: 10, marginTop: 18, background: "transparent", border: `1px dashed ${LINE}`, borderRadius: 5, color: "#5A564E", fontSize: 11.5 }}
-          >
-            Skip (testing only)
-          </button>
+          {isDevMode && (
+            <button
+              onClick={() => setView("pricing")}
+              className="btn mono"
+              style={{ width: "100%", padding: 10, marginTop: 18, background: "transparent", border: `1px dashed ${LINE}`, borderRadius: 5, color: "#5A564E", fontSize: 11.5 }}
+            >
+              Skip (testing only)
+            </button>
+          )}
         </div>
       </div>
     );

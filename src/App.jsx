@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Upload, TrendingUp, TrendingDown, Minus, AlertTriangle, Loader2, X, ArrowRight, Target, ShieldAlert, Crosshair, Layers, Clock, Globe2, Grid3x3, Camera, Gauge, ShieldCheck, ChevronRight, Newspaper, Coins, LineChart, Landmark, MessageCircle, ArrowLeft, RefreshCw, Share2, Download } from "lucide-react";
+import { Upload, TrendingUp, TrendingDown, Minus, AlertTriangle, Loader2, X, ArrowRight, Target, ShieldAlert, Crosshair, Layers, Clock, Globe2, Grid3x3, Camera, Gauge, ShieldCheck, ChevronRight, Newspaper, Coins, LineChart, Landmark, MessageCircle, ArrowLeft, RefreshCw, Share2, Download, Settings, LogOut, Check } from "lucide-react";
 
 const GOLD = "#C9A648";
 const GOLD_BRIGHT = "#E8C973";
@@ -35,6 +35,20 @@ async function supabaseAuthRequest(path, body) {
 
 const signUp = (email, password) => supabaseAuthRequest("signup", { email, password });
 const signIn = (email, password) => supabaseAuthRequest("token?grant_type=password", { email, password });
+
+async function updateSupabaseUser(accessToken, updates) {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(updates),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data?.error_description || data?.msg || data?.error || `auth_error_${res.status}`;
+    throw new Error(msg);
+  }
+  return data;
+}
 
 async function supabaseRest(path, { method = "GET", body, accessToken } = {}) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -361,6 +375,51 @@ export default function SmartTrade() {
   // button. Regular visitors never see it.
   const isDevMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("dev") === "1";
 
+  const [newPassword, setNewPassword] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsError, setSettingsError] = useState(null);
+  const [settingsNotice, setSettingsNotice] = useState(null);
+
+  const handleChangePassword = async () => {
+    setSettingsError(null);
+    setSettingsNotice(null);
+    if (newPassword.length < 6) {
+      setSettingsError("Minimum 6 characters.");
+      return;
+    }
+    setSettingsLoading(true);
+    try {
+      await updateSupabaseUser(session.accessToken, { password: newPassword });
+      setSettingsNotice("Password updated.");
+      setNewPassword("");
+    } catch (err) {
+      setSettingsError(String(err.message || err));
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const handleChangeEmail = async () => {
+    setSettingsError(null);
+    setSettingsNotice(null);
+    if (!newEmail || !newEmail.includes("@")) {
+      setSettingsError("Enter a valid email address.");
+      return;
+    }
+    setSettingsLoading(true);
+    try {
+      await updateSupabaseUser(session.accessToken, { email: newEmail });
+      setSettingsNotice("Check your new inbox to confirm the email change.");
+      setNewEmail("");
+    } catch (err) {
+      setSettingsError(String(err.message || err));
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+
   const [view, setView] = useState("welcome"); // 'welcome' | 'pricing' | 'landing' | 'app' | 'news' | 'auth'
   const [session, setSession] = useState(null); // { accessToken, email } | null
   const [authMode, setAuthMode] = useState("signup"); // 'signup' | 'signin'
@@ -368,6 +427,7 @@ export default function SmartTrade() {
   const [authPassword, setAuthPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
+  const [authErrorDetail, setAuthErrorDetail] = useState(null);
   const [authNotice, setAuthNotice] = useState(null);
 
   // Remember the session across page reloads via localStorage — a real
@@ -422,7 +482,13 @@ export default function SmartTrade() {
       }
     } catch (err) {
       console.error("Auth failed:", err);
-      setAuthError(String(err.message || err));
+      const msg = String(err.message || err);
+      setAuthErrorDetail(msg);
+      setAuthError(
+        /load failed|failed to fetch|network|timeout/i.test(msg)
+          ? "Couldn't reach the server. Please try again in a moment."
+          : msg
+      );
     } finally {
       setAuthLoading(false);
     }
@@ -922,8 +988,63 @@ export default function SmartTrade() {
         .news-container { max-width: 1180px; }
         .news-grid { grid-template-columns: repeat(3, 1fr); }
       }
+      .app-shell { display: block; }
+      .sidebar { display: none; }
+      .main-content { width: 100%; }
+      @media (min-width: 900px) {
+        .app-shell { display: flex; align-items: flex-start; }
+        .sidebar {
+          display: flex; flex-direction: column; width: 216px; flex-shrink: 0;
+          min-height: 100vh; padding: 32px 16px; border-right: 1px solid ${LINE};
+          position: sticky; top: 0;
+        }
+        .main-content { flex: 1; min-width: 0; }
+      }
+      .sidebar-link {
+        display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 6px;
+        color: ${MUTE}; font-size: 13px; cursor: pointer; border: 1px solid transparent; background: transparent;
+        width: 100%; text-align: left; transition: background .15s ease, color .15s ease;
+      }
+      .sidebar-link:hover { background: ${PANEL}; color: ${TEXT}; }
+      .sidebar-link.active { background: ${GOLD}14; border-color: ${GOLD}33; color: ${GOLD_BRIGHT}; font-weight: 600; }
     `}</style>
   );
+
+  // Reusable left sidebar shown on wide screens across the main app
+  // sections (chart analysis, market pulse, track record, settings).
+  // Hidden on narrow/mobile viewports via CSS — the existing back-button
+  // navigation there is left untouched.
+  const renderSidebar = (active) => {
+    const items = [
+      { key: "app", label: "Chart Analysis", Icon: Camera, onClick: () => setView("app") },
+      { key: "news", label: "Market Pulse", Icon: Newspaper, onClick: () => { setView("news"); loadNews(false); } },
+      { key: "history", label: "Track Record", Icon: Clock, onClick: () => { setView("history"); loadHistory(); } },
+      { key: "settings", label: "Settings", Icon: Settings, onClick: () => setView("settings") },
+    ];
+    return (
+      <div className="sidebar">
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 32, padding: "0 12px" }}>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: GOLD }} />
+          <span className="mono" style={{ fontSize: 12, letterSpacing: 2, color: GOLD, fontWeight: 700, textTransform: "uppercase" }}>Smart Trade</span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {items.map((it) => (
+            <button key={it.key} onClick={it.onClick} className={`sidebar-link mono${active === it.key ? " active" : ""}`}>
+              <it.Icon size={15} />
+              {it.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ flex: 1 }} />
+        {session && (
+          <button onClick={logOut} className="sidebar-link mono" style={{ marginTop: 20 }}>
+            <LogOut size={15} />
+            Log out
+          </button>
+        )}
+      </div>
+    );
+  };
 
   // ---------- WELCOME ----------
   if (view === "welcome") {
@@ -1154,6 +1275,9 @@ export default function SmartTrade() {
       <div style={{ minHeight: "100vh", background: INK, color: TEXT, fontFamily: "'Inter', sans-serif", position: "relative", overflow: "hidden" }}>
         {sharedStyles}
         <div style={{ position: "absolute", top: -60, left: "70%", transform: "translateX(-50%)", width: 460, height: 380, background: `radial-gradient(circle, ${GOLD}16, transparent 70%)`, pointerEvents: "none" }} />
+        <div className="app-shell">
+          {renderSidebar("news")}
+          <div className="main-content">
         <div className="news-container" style={{ margin: "0 auto", padding: "48px 20px 90px", position: "relative" }}>
           <button onClick={() => setView("app")} className="btn mono" style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: MUTE, fontSize: 12.5, padding: 0, marginBottom: 22 }}>
             <ArrowLeft size={14} /> Back
@@ -1227,6 +1351,8 @@ export default function SmartTrade() {
             </div>
           )}
         </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -1251,7 +1377,10 @@ export default function SmartTrade() {
       <div style={{ minHeight: "100vh", background: INK, color: TEXT, fontFamily: "'Inter', sans-serif", position: "relative", overflow: "hidden" }}>
         {sharedStyles}
         <div style={{ position: "absolute", top: -60, left: "30%", transform: "translateX(-50%)", width: 460, height: 380, background: `radial-gradient(circle, ${GOLD}16, transparent 70%)`, pointerEvents: "none" }} />
-        <div style={{ maxWidth: 620, margin: "0 auto", padding: "48px 20px 90px", position: "relative" }}>
+        <div className="app-shell">
+          {renderSidebar("history")}
+          <div className="main-content">
+        <div className="news-container" style={{ margin: "0 auto", padding: "48px 20px 90px", position: "relative" }}>
           <button onClick={() => setView("app")} className="btn mono" style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: MUTE, fontSize: 12.5, padding: 0, marginBottom: 22 }}>
             <ArrowLeft size={14} /> Back
           </button>
@@ -1363,6 +1492,8 @@ export default function SmartTrade() {
             </div>
           )}
         </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -1414,7 +1545,15 @@ export default function SmartTrade() {
 
           {authError && (
             <div className="mono fade" style={{ marginBottom: 14, padding: 12, background: RED + "14", border: `1px solid ${RED}44`, borderRadius: 5, fontSize: 12.5, color: RED }}>
-              {authError}
+              <div>{authError}</div>
+              {authErrorDetail && authErrorDetail !== authError && (
+                <details style={{ marginTop: 8 }}>
+                  <summary style={{ cursor: "pointer", fontSize: 11, color: RED + "CC" }}>Technical details</summary>
+                  <div style={{ marginTop: 6, padding: 8, background: INK, borderRadius: 4, fontSize: 10.5, color: MUTE, wordBreak: "break-all", userSelect: "text" }}>
+                    {authErrorDetail}
+                  </div>
+                </details>
+              )}
             </div>
           )}
           {authNotice && (
@@ -1462,11 +1601,121 @@ export default function SmartTrade() {
     );
   }
 
+  // ---------- SETTINGS ----------
+  if (view === "settings") {
+    return (
+      <div style={{ minHeight: "100vh", background: INK, color: TEXT, fontFamily: "'Inter', sans-serif", position: "relative", overflow: "hidden" }}>
+        {sharedStyles}
+        <div style={{ position: "absolute", top: -60, left: "30%", transform: "translateX(-50%)", width: 460, height: 380, background: `radial-gradient(circle, ${GOLD}16, transparent 70%)`, pointerEvents: "none" }} />
+        <div className="app-shell">
+          {renderSidebar("settings")}
+          <div className="main-content">
+            <div style={{ maxWidth: 480, margin: "0 auto", padding: "48px 20px 90px", position: "relative" }}>
+              <button onClick={() => setView("app")} className="btn mono" style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: MUTE, fontSize: 12.5, padding: 0, marginBottom: 22 }}>
+                <ArrowLeft size={14} /> Back
+              </button>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: GOLD }} />
+                <span className="mono" style={{ fontSize: 11, letterSpacing: 3, color: GOLD, textTransform: "uppercase" }}>Settings</span>
+              </div>
+              <h1 className="disp" style={{ fontSize: 32, fontWeight: 480, margin: "6px 0 24px", letterSpacing: -0.3 }}>
+                Your account.
+              </h1>
+
+              {!session ? (
+                <div className="mono" style={{ padding: 20, background: PANEL, border: `1px solid ${LINE}`, borderRadius: 8, fontSize: 13, color: MUTE, lineHeight: 1.6 }}>
+                  You're not signed in, so there's no account to manage.
+                  <button onClick={() => setView("auth")} className="btn mono" style={{ display: "block", marginTop: 12, padding: "9px 16px", background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})`, color: INK, border: "none", borderRadius: 5, fontSize: 12.5, fontWeight: 600 }}>
+                    Create account / Sign in
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ marginBottom: 16, padding: "12px 16px", background: PANEL, border: `1px solid ${LINE}`, borderRadius: 6 }}>
+                    <div className="mono" style={{ fontSize: 10.5, color: MUTE, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 3 }}>Signed in as</div>
+                    <div className="mono" style={{ fontSize: 13.5, color: TEXT }}>{session.email}</div>
+                  </div>
+
+                  {settingsError && (
+                    <div className="mono fade" style={{ marginBottom: 14, padding: 12, background: RED + "14", border: `1px solid ${RED}44`, borderRadius: 5, fontSize: 12.5, color: RED }}>
+                      {settingsError}
+                    </div>
+                  )}
+                  {settingsNotice && (
+                    <div className="mono fade" style={{ marginBottom: 14, padding: 12, background: GREEN + "14", border: `1px solid ${GREEN}44`, borderRadius: 5, fontSize: 12.5, color: GREEN, display: "flex", alignItems: "center", gap: 7 }}>
+                      <Check size={13} /> {settingsNotice}
+                    </div>
+                  )}
+
+                  {/* Change password */}
+                  <div style={{ marginBottom: 16, padding: 18, background: PANEL, border: `1px solid ${LINE}`, borderRadius: 8 }}>
+                    <div className="mono" style={{ fontSize: 12, fontWeight: 600, color: TEXT, marginBottom: 10 }}>Change password</div>
+                    <input
+                      type="password"
+                      placeholder="New password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="mono"
+                      style={{ width: "100%", padding: "11px 14px", borderRadius: 6, background: INK, border: `1px solid ${LINE}`, color: TEXT, fontSize: 13.5, outline: "none", marginBottom: 8 }}
+                    />
+                    {newPassword.length > 0 && (
+                      <div className="mono" style={{ fontSize: 11, color: newPassword.length >= 6 ? GREEN : RED, marginBottom: 8 }}>
+                        {newPassword.length >= 6 ? "✓ Length OK" : "Minimum 6 characters"}
+                      </div>
+                    )}
+                    <button onClick={handleChangePassword} disabled={settingsLoading} className="btn mono" style={{ padding: "9px 16px", background: PANEL, border: `1px solid ${LINE}`, borderRadius: 5, color: TEXT, fontSize: 12.5, fontWeight: 600 }}>
+                      Update password
+                    </button>
+                  </div>
+
+                  {/* Change email */}
+                  <div style={{ marginBottom: 16, padding: 18, background: PANEL, border: `1px solid ${LINE}`, borderRadius: 8 }}>
+                    <div className="mono" style={{ fontSize: 12, fontWeight: 600, color: TEXT, marginBottom: 10 }}>Change email</div>
+                    <input
+                      type="email"
+                      placeholder="New email address"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      className="mono"
+                      style={{ width: "100%", padding: "11px 14px", borderRadius: 6, background: INK, border: `1px solid ${LINE}`, color: TEXT, fontSize: 13.5, outline: "none", marginBottom: 10 }}
+                    />
+                    <button onClick={handleChangeEmail} disabled={settingsLoading} className="btn mono" style={{ padding: "9px 16px", background: PANEL, border: `1px solid ${LINE}`, borderRadius: 5, color: TEXT, fontSize: 12.5, fontWeight: 600 }}>
+                      Update email
+                    </button>
+                  </div>
+
+                  {/* Subscription */}
+                  <div style={{ marginBottom: 16, padding: 18, background: PANEL, border: `1px solid ${GOLD}33`, borderRadius: 8 }}>
+                    <div className="mono" style={{ fontSize: 12, fontWeight: 600, color: TEXT, marginBottom: 6 }}>Subscription</div>
+                    <p className="mono" style={{ fontSize: 12.5, color: MUTE, lineHeight: 1.6, margin: "0 0 12px" }}>
+                      Billing isn't connected yet — every account currently has full access while this is being built.
+                    </p>
+                    <button onClick={() => setView("pricing")} className="btn mono" style={{ padding: "9px 16px", background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})`, color: INK, border: "none", borderRadius: 5, fontSize: 12.5, fontWeight: 600 }}>
+                      View plans
+                    </button>
+                  </div>
+
+                  <button onClick={logOut} className="btn mono" style={{ width: "100%", padding: 12, background: "transparent", border: `1px solid ${LINE}`, borderRadius: 5, color: MUTE, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+                    <LogOut size={14} /> Log out
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ---------- APP ----------
   return (
     <div style={{ minHeight: "100vh", background: INK, color: TEXT, fontFamily: "'Inter', sans-serif", position: "relative", overflow: "hidden" }}>
       {sharedStyles}
       <div style={{ position: "absolute", top: -70, left: "50%", transform: "translateX(-50%)", width: 520, height: 400, background: `radial-gradient(circle, ${GOLD}14, transparent 70%)`, pointerEvents: "none" }} />
+      <div className="app-shell">
+        {renderSidebar("app")}
+        <div className="main-content">
       <div className={result ? "news-container" : ""} style={{ maxWidth: result ? undefined : 620, margin: "0 auto", padding: "48px 20px 90px", position: "relative" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1838,6 +2087,8 @@ export default function SmartTrade() {
             </div>
           </div>
         )}
+      </div>
+        </div>
       </div>
     </div>
   );

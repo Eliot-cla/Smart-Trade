@@ -917,12 +917,10 @@ export default function SmartTrade() {
       @media (min-width: 820px) {
         .news-container { max-width: 900px; }
         .news-grid { grid-template-columns: repeat(2, 1fr); }
-        .result-grid { grid-template-columns: repeat(2, 1fr); }
       }
       @media (min-width: 1200px) {
         .news-container { max-width: 1180px; }
         .news-grid { grid-template-columns: repeat(3, 1fr); }
-        .result-grid { grid-template-columns: repeat(3, 1fr); }
       }
     `}</style>
   );

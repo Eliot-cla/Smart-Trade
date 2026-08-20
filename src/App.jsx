@@ -911,6 +911,19 @@ export default function SmartTrade() {
       input[type=checkbox].gold-check { accent-color: ${GOLD}; width: 15px; height: 15px; }
       .progress-track { height: 4px; background: ${LINE}; border-radius: 3px; overflow: hidden; }
       .progress-fill { height: 100%; background: linear-gradient(90deg, ${GOLD}, ${GOLD_BRIGHT}); border-radius: 3px; transition: width .35s ease; }
+      .news-container { max-width: 620px; }
+      .news-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+      .result-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+      @media (min-width: 820px) {
+        .news-container { max-width: 900px; }
+        .news-grid { grid-template-columns: repeat(2, 1fr); }
+        .result-grid { grid-template-columns: repeat(2, 1fr); }
+      }
+      @media (min-width: 1200px) {
+        .news-container { max-width: 1180px; }
+        .news-grid { grid-template-columns: repeat(3, 1fr); }
+        .result-grid { grid-template-columns: repeat(3, 1fr); }
+      }
     `}</style>
   );
 
@@ -1143,7 +1156,7 @@ export default function SmartTrade() {
       <div style={{ minHeight: "100vh", background: INK, color: TEXT, fontFamily: "'Inter', sans-serif", position: "relative", overflow: "hidden" }}>
         {sharedStyles}
         <div style={{ position: "absolute", top: -60, left: "70%", transform: "translateX(-50%)", width: 460, height: 380, background: `radial-gradient(circle, ${GOLD}16, transparent 70%)`, pointerEvents: "none" }} />
-        <div style={{ maxWidth: 620, margin: "0 auto", padding: "48px 20px 90px", position: "relative" }}>
+        <div className="news-container" style={{ margin: "0 auto", padding: "48px 20px 90px", position: "relative" }}>
           <button onClick={() => setView("app")} className="btn mono" style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: MUTE, fontSize: 12.5, padding: 0, marginBottom: 22 }}>
             <ArrowLeft size={14} /> Back
           </button>
@@ -1193,22 +1206,24 @@ export default function SmartTrade() {
           )}
 
           {!newsLoading && !newsError && news?.items?.length > 0 && (
-            <div className="fade" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {news.items.map((item, i) => {
-                const CatIcon = categoryIcon[item.category] || Globe2;
-                const color = categoryColor[item.category] || GOLD;
-                return (
-                  <div key={i} style={{ background: PANEL, border: `1px solid ${LINE}`, borderLeft: `3px solid ${color}88`, borderRadius: 8, padding: "16px 18px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
-                      <CatIcon size={12} color={color} />
-                      <span className="mono" style={{ fontSize: 10, fontWeight: 700, color, letterSpacing: 1, textTransform: "uppercase" }}>{item.category}</span>
+            <div className="fade">
+              <div className="news-grid">
+                {news.items.map((item, i) => {
+                  const CatIcon = categoryIcon[item.category] || Globe2;
+                  const color = categoryColor[item.category] || GOLD;
+                  return (
+                    <div key={i} style={{ background: PANEL, border: `1px solid ${LINE}`, borderLeft: `3px solid ${color}88`, borderRadius: 8, padding: "16px 18px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+                        <CatIcon size={12} color={color} />
+                        <span className="mono" style={{ fontSize: 10, fontWeight: 700, color, letterSpacing: 1, textTransform: "uppercase" }}>{item.category}</span>
+                      </div>
+                      <div className="mono" style={{ fontSize: 14, fontWeight: 600, color: TEXT, marginBottom: 5, lineHeight: 1.4 }}>{item.headline}</div>
+                      <div className="mono" style={{ fontSize: 12.5, color: MUTE, lineHeight: 1.55 }}>{item.summary}</div>
                     </div>
-                    <div className="mono" style={{ fontSize: 14, fontWeight: 600, color: TEXT, marginBottom: 5, lineHeight: 1.4 }}>{item.headline}</div>
-                    <div className="mono" style={{ fontSize: 12.5, color: MUTE, lineHeight: 1.55 }}>{item.summary}</div>
-                  </div>
-                );
-              })}
-              <p className="mono" style={{ fontSize: 11, color: "#5A564E", marginTop: 6, lineHeight: 1.6 }}>
+                  );
+                })}
+              </div>
+              <p className="mono" style={{ fontSize: 11, color: "#5A564E", marginTop: 14, lineHeight: 1.6 }}>
                 General market information, not investment advice. Always cross-check independently.
               </p>
             </div>
@@ -1283,7 +1298,11 @@ export default function SmartTrade() {
           {storageUnavailable && (
             <div className="mono fade" style={{ display: "flex", gap: 8, padding: 12, background: GOLD + "10", border: `1px solid ${GOLD}33`, borderRadius: 5, fontSize: 11.5, color: MUTE, lineHeight: 1.5, marginBottom: 14 }}>
               <AlertTriangle size={13} color={GOLD} style={{ flexShrink: 0, marginTop: 1 }} />
-              <span>Persistent storage isn't responding right now — entries below are kept for this session, but may not survive closing the app. Nothing you've done has been lost yet.</span>
+              {session ? (
+                <span>Persistent storage isn't responding right now — entries below are kept for this session, but may not survive closing the app. Nothing you've done has been lost yet.</span>
+              ) : (
+                <span>You're browsing without an account, so entries below are only kept for this session — create an account to save your Track Record permanently.</span>
+              )}
             </div>
           )}
 
@@ -1388,6 +1407,11 @@ export default function SmartTrade() {
               className="mono"
               style={{ padding: "14px 16px", borderRadius: 6, background: PANEL, border: `1px solid ${LINE}`, color: TEXT, fontSize: 14, outline: "none" }}
             />
+            {authMode === "signup" && authPassword.length > 0 && (
+              <span className="mono" style={{ fontSize: 11.5, color: authPassword.length >= 6 ? GREEN : RED, marginTop: -6 }}>
+                {authPassword.length >= 6 ? "✓ Password length OK" : "Minimum 6 characters"}
+              </span>
+            )}
           </div>
 
           {authError && (
@@ -1445,7 +1469,7 @@ export default function SmartTrade() {
     <div style={{ minHeight: "100vh", background: INK, color: TEXT, fontFamily: "'Inter', sans-serif", position: "relative", overflow: "hidden" }}>
       {sharedStyles}
       <div style={{ position: "absolute", top: -70, left: "50%", transform: "translateX(-50%)", width: 520, height: 400, background: `radial-gradient(circle, ${GOLD}14, transparent 70%)`, pointerEvents: "none" }} />
-      <div style={{ maxWidth: 620, margin: "0 auto", padding: "48px 20px 90px", position: "relative" }}>
+      <div className={result ? "news-container" : ""} style={{ maxWidth: result ? undefined : 620, margin: "0 auto", padding: "48px 20px 90px", position: "relative" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: GOLD }} />
@@ -1644,95 +1668,97 @@ export default function SmartTrade() {
                 </div>
               </div>
 
-              {/* 2. Why this read */}
-              <div style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 8, padding: 20, marginBottom: 14 }}>
-                <div className="mono" style={{ fontSize: 11, letterSpacing: 1.5, color: GOLD, marginBottom: 10, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
-                  <ArrowRight size={12} /> Why this read
-                </div>
-                <p className="mono" style={{ fontSize: 14, lineHeight: 1.65, color: TEXT, margin: 0 }}>{result.rationale}</p>
-                {result.invalidation && (
-                  <p className="mono" style={{ fontSize: 12.5, lineHeight: 1.6, color: MUTE, margin: "12px 0 0", paddingTop: 12, borderTop: `1px solid ${LINE}` }}>
-                    <strong style={{ color: TEXT }}>What would invalidate this: </strong>{result.invalidation}
-                  </p>
-                )}
-              </div>
-
-              {/* 3. Market context */}
-              {result.marketContext && (
-                <div style={{ background: PANEL, border: `1px solid ${GOLD}33`, borderRadius: 8, padding: 20, marginBottom: 14 }}>
+              <div className="result-grid">
+                {/* 2. Why this read */}
+                <div style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 8, padding: 20 }}>
                   <div className="mono" style={{ fontSize: 11, letterSpacing: 1.5, color: GOLD, marginBottom: 10, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
-                    <Globe2 size={12} /> Market context
+                    <ArrowRight size={12} /> Why this read
                   </div>
-                  <p className="mono" style={{ fontSize: 13.5, lineHeight: 1.6, color: TEXT, margin: "0 0 10px" }}>{result.marketContext.summary}</p>
-                  {result.marketContext.factors?.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      {result.marketContext.factors.map((f, i) => (
-                        <span key={i} className="mono" style={{ fontSize: 11.5, padding: "5px 11px", background: INK, border: `1px solid ${LINE}`, borderRadius: 20, color: MUTE }}>{f}</span>
+                  <p className="mono" style={{ fontSize: 14, lineHeight: 1.65, color: TEXT, margin: 0 }}>{result.rationale}</p>
+                  {result.invalidation && (
+                    <p className="mono" style={{ fontSize: 12.5, lineHeight: 1.6, color: MUTE, margin: "12px 0 0", paddingTop: 12, borderTop: `1px solid ${LINE}` }}>
+                      <strong style={{ color: TEXT }}>What would invalidate this: </strong>{result.invalidation}
+                    </p>
+                  )}
+                </div>
+
+                {/* 3. Market context */}
+                {result.marketContext && (
+                  <div style={{ background: PANEL, border: `1px solid ${GOLD}33`, borderRadius: 8, padding: 20 }}>
+                    <div className="mono" style={{ fontSize: 11, letterSpacing: 1.5, color: GOLD, marginBottom: 10, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
+                      <Globe2 size={12} /> Market context
+                    </div>
+                    <p className="mono" style={{ fontSize: 13.5, lineHeight: 1.6, color: TEXT, margin: "0 0 10px" }}>{result.marketContext.summary}</p>
+                    {result.marketContext.factors?.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                        {result.marketContext.factors.map((f, i) => (
+                          <span key={i} className="mono" style={{ fontSize: 11.5, padding: "5px 11px", background: INK, border: `1px solid ${LINE}`, borderRadius: 20, color: MUTE }}>{f}</span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="mono" style={{ fontSize: 11, color: "#5A564E", marginTop: 10, marginBottom: 0 }}>General context, not asset-specific certainty — always cross-check independently.</p>
+                  </div>
+                )}
+
+                {/* 4. Structure Analysis — trend + patterns/SMC events + support/resistance, grouped */}
+                <div style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 8, padding: 20 }}>
+                  <div className="mono" style={{ fontSize: 11, letterSpacing: 1.5, color: GOLD, marginBottom: 14, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
+                    <Grid3x3 size={12} /> Structure analysis
+                  </div>
+
+                  {sa.trend && (
+                    <p className="mono" style={{ fontSize: 13.5, lineHeight: 1.6, color: TEXT, margin: "0 0 16px" }}>{sa.trend}</p>
+                  )}
+
+                  {sa.events?.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 16 }}>
+                      {sa.events.map((ev, i) => (
+                        <div key={i} style={{ background: INK, border: `1px solid ${LINE}`, borderRadius: 6, padding: "11px 13px", display: "flex", gap: 10 }}>
+                          <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, color: GOLD, letterSpacing: 0.5, whiteSpace: "nowrap", paddingTop: 1 }}>{ev.name}</span>
+                          <span className="mono" style={{ fontSize: 12, color: MUTE, lineHeight: 1.5 }}>{ev.explanation}</span>
+                        </div>
                       ))}
                     </div>
                   )}
-                  <p className="mono" style={{ fontSize: 11, color: "#5A564E", marginTop: 10, marginBottom: 0 }}>General context, not asset-specific certainty — always cross-check independently.</p>
+
+                  <div style={{ display: "flex", gap: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <div className="mono" style={{ fontSize: 10.5, letterSpacing: 1.2, color: GREEN, marginBottom: 8, textTransform: "uppercase" }}>Support</div>
+                      {(sa.support || []).map((lvl, i) => (<div key={i} className="mono" style={{ fontSize: 13, color: TEXT, padding: "3px 0" }}>{lvl}</div>))}
+                      {(!sa.support || sa.support.length === 0) && <div className="mono" style={{ fontSize: 12, color: "#5A564E" }}>—</div>}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div className="mono" style={{ fontSize: 10.5, letterSpacing: 1.2, color: RED, marginBottom: 8, textTransform: "uppercase" }}>Resistance</div>
+                      {(sa.resistance || []).map((lvl, i) => (<div key={i} className="mono" style={{ fontSize: 13, color: TEXT, padding: "3px 0" }}>{lvl}</div>))}
+                      {(!sa.resistance || sa.resistance.length === 0) && <div className="mono" style={{ fontSize: 12, color: "#5A564E" }}>—</div>}
+                    </div>
+                  </div>
                 </div>
-              )}
 
-              {/* 4. Structure Analysis — trend + patterns/SMC events + support/resistance, grouped */}
-              <div style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 8, padding: 20, marginBottom: 14 }}>
-                <div className="mono" style={{ fontSize: 11, letterSpacing: 1.5, color: GOLD, marginBottom: 14, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
-                  <Grid3x3 size={12} /> Structure analysis
-                </div>
-
-                {sa.trend && (
-                  <p className="mono" style={{ fontSize: 13.5, lineHeight: 1.6, color: TEXT, margin: "0 0 16px" }}>{sa.trend}</p>
-                )}
-
-                {sa.events?.length > 0 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 16 }}>
-                    {sa.events.map((ev, i) => (
-                      <div key={i} style={{ background: INK, border: `1px solid ${LINE}`, borderRadius: 6, padding: "11px 13px", display: "flex", gap: 10 }}>
-                        <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, color: GOLD, letterSpacing: 0.5, whiteSpace: "nowrap", paddingTop: 1 }}>{ev.name}</span>
-                        <span className="mono" style={{ fontSize: 12, color: MUTE, lineHeight: 1.5 }}>{ev.explanation}</span>
-                      </div>
-                    ))}
+                {/* 5. Strategy */}
+                {result.strategy && (
+                  <div style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 8, padding: 20 }}>
+                    <div className="mono" style={{ fontSize: 11, letterSpacing: 1.5, color: GOLD, marginBottom: 10, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}><Layers size={12} /> Possible approach</div>
+                    <p className="mono" style={{ fontSize: 13.5, lineHeight: 1.65, color: TEXT, margin: 0 }}>{result.strategy}</p>
                   </div>
                 )}
 
-                <div style={{ display: "flex", gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <div className="mono" style={{ fontSize: 10.5, letterSpacing: 1.2, color: GREEN, marginBottom: 8, textTransform: "uppercase" }}>Support</div>
-                    {(sa.support || []).map((lvl, i) => (<div key={i} className="mono" style={{ fontSize: 13, color: TEXT, padding: "3px 0" }}>{lvl}</div>))}
-                    {(!sa.support || sa.support.length === 0) && <div className="mono" style={{ fontSize: 12, color: "#5A564E" }}>—</div>}
+                {/* 6. Timeframe context */}
+                {result.timeframeContext && (
+                  <div style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 8, padding: 20 }}>
+                    <div className="mono" style={{ fontSize: 11, letterSpacing: 1.5, color: GOLD, marginBottom: 10, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}><Clock size={12} /> Timeframe context</div>
+                    <p className="mono" style={{ fontSize: 13.5, lineHeight: 1.65, color: TEXT, margin: 0 }}>{result.timeframeContext}</p>
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div className="mono" style={{ fontSize: 10.5, letterSpacing: 1.2, color: RED, marginBottom: 8, textTransform: "uppercase" }}>Resistance</div>
-                    {(sa.resistance || []).map((lvl, i) => (<div key={i} className="mono" style={{ fontSize: 13, color: TEXT, padding: "3px 0" }}>{lvl}</div>))}
-                    {(!sa.resistance || sa.resistance.length === 0) && <div className="mono" style={{ fontSize: 12, color: "#5A564E" }}>—</div>}
-                  </div>
-                </div>
+                )}
               </div>
 
-              {/* 5. Strategy */}
-              {result.strategy && (
-                <div style={{ marginBottom: 14, background: PANEL, border: `1px solid ${LINE}`, borderRadius: 8, padding: 20 }}>
-                  <div className="mono" style={{ fontSize: 11, letterSpacing: 1.5, color: GOLD, marginBottom: 10, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}><Layers size={12} /> Possible approach</div>
-                  <p className="mono" style={{ fontSize: 13.5, lineHeight: 1.65, color: TEXT, margin: 0 }}>{result.strategy}</p>
-                </div>
-              )}
-
-              {/* 6. Timeframe context */}
-              {result.timeframeContext && (
-                <div style={{ marginBottom: 20, background: PANEL, border: `1px solid ${LINE}`, borderRadius: 8, padding: 20 }}>
-                  <div className="mono" style={{ fontSize: 11, letterSpacing: 1.5, color: GOLD, marginBottom: 10, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}><Clock size={12} /> Timeframe context</div>
-                  <p className="mono" style={{ fontSize: 13.5, lineHeight: 1.65, color: TEXT, margin: 0 }}>{result.timeframeContext}</p>
-                </div>
-              )}
-
               {/* Disclaimer */}
-              <div className="mono" style={{ display: "flex", gap: 10, padding: 15, background: PANEL, border: `1px solid ${LINE}`, borderRadius: 6, fontSize: 12, color: MUTE, lineHeight: 1.6 }}>
+              <div className="mono" style={{ display: "flex", gap: 10, padding: 15, background: PANEL, border: `1px solid ${LINE}`, borderRadius: 6, fontSize: 12, color: MUTE, lineHeight: 1.6, marginTop: 14 }}>
                 <AlertTriangle size={15} color={MUTE} style={{ flexShrink: 0, marginTop: 1 }} />
                 <span>Automated reading of visual patterns (and general market context, when enabled) — not personalized financial advice, and not an instruction to trade. Levels shown are indicative and guarantee no outcome. Trading carries real risk of capital loss.</span>
               </div>
 
-              <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+              <div style={{ display: "flex", gap: 8, marginTop: 18, maxWidth: 420, marginLeft: "auto", marginRight: "auto" }}>
                 <button
                   onClick={() => saveToHistory(result, image)}
                   disabled={savingToHistory || savedToHistory}
@@ -1772,7 +1798,7 @@ export default function SmartTrade() {
                 </button>
               </div>
 
-              <button onClick={reset} className="btn mono" style={{ marginTop: 10, width: "100%", padding: 12, background: "transparent", border: `1px solid ${LINE}`, borderRadius: 5, color: MUTE, fontSize: 13 }}>
+              <button onClick={reset} className="btn mono" style={{ marginTop: 10, width: "100%", maxWidth: 420, marginLeft: "auto", marginRight: "auto", display: "block", padding: 12, background: "transparent", border: `1px solid ${LINE}`, borderRadius: 5, color: MUTE, fontSize: 13 }}>
                 Analyze another chart
               </button>
             </div>

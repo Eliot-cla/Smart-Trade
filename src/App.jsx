@@ -1285,7 +1285,15 @@ export default function SmartTrade() {
             Create account <ChevronRight size={16} />
           </button>
 
-          <p className="mono" style={{ fontSize: 11, color: "#5A564E", marginTop: 16, lineHeight: 1.6, textAlign: "center" }}>
+          <button
+            onClick={() => { setAuthMode("signin"); setView("auth"); }}
+            className="btn mono"
+            style={{ width: "100%", padding: 10, marginTop: 8, background: "transparent", border: "none", color: MUTE, fontSize: 12.5, textAlign: "center" }}
+          >
+            Already have an account? <span style={{ color: GOLD_BRIGHT, textDecoration: "underline" }}>Log in</span>
+          </button>
+
+          <p className="mono" style={{ fontSize: 11, color: "#5A564E", marginTop: 8, lineHeight: 1.6, textAlign: "center" }}>
             Educational chart-reading tool. Not financial advice, not a signal to trade.
           </p>
         </div>

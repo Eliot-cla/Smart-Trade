@@ -36,6 +36,22 @@ async function supabaseAuthRequest(path, body) {
 const signUp = (email, password) => supabaseAuthRequest("signup", { email, password });
 const signIn = (email, password) => supabaseAuthRequest("token?grant_type=password", { email, password });
 
+// Extracts the user id (the "sub" claim) directly from the JWT the auth
+// endpoint returns. Sending this explicitly on every insert removes the
+// dependency on the `user_id` column's DEFAULT auth.uid() evaluating
+// correctly — it's the same value, just supplied by the client instead
+// of guessed by the database, and RLS still validates it against the
+// token's own auth.uid() at write time either way.
+function decodeJwtSub(token) {
+  try {
+    const payload = token.split(".")[1];
+    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(json).sub || null;
+  } catch {
+    return null;
+  }
+}
+
 async function updateSupabaseUser(accessToken, updates) {
   const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
     method: "PUT",
@@ -464,7 +480,7 @@ export default function SmartTrade() {
       if (authMode === "signup") {
         const data = await signUp(authEmail, authPassword);
         if (data?.access_token) {
-          const s = { accessToken: data.access_token, email: authEmail };
+          const s = { accessToken: data.access_token, email: authEmail, userId: decodeJwtSub(data.access_token) };
           setSession(s);
           persistSession(s);
           setView("pricing");
@@ -475,7 +491,7 @@ export default function SmartTrade() {
         }
       } else {
         const data = await signIn(authEmail, authPassword);
-        const s = { accessToken: data.access_token, email: authEmail };
+        const s = { accessToken: data.access_token, email: authEmail, userId: decodeJwtSub(data.access_token) };
         setSession(s);
         persistSession(s);
         setView("pricing");
@@ -535,6 +551,7 @@ export default function SmartTrade() {
   });
 
   const recordToDbInsert = (record) => ({
+    user_id: session?.userId,
     thumbnail: record.thumbnail,
     asset: record.asset,
     detected_timeframe: record.detectedTimeframe,

@@ -95,6 +95,33 @@ async function supabaseRest(path, { method = "GET", body, accessToken } = {}) {
   return res.json().catch(() => null);
 }
 
+// Protects the API budget while there's no real plan/billing distinction
+// yet — every account shares the same monthly cap for now. Calls the
+// increment_usage() Postgres function, which atomically bumps this
+// user's counter for the current month and returns the new total, so
+// there's no race condition between checking and incrementing.
+const MONTHLY_USAGE_LIMIT = 500;
+
+async function checkAndIncrementUsage(accessToken) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_usage`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: "{}",
+  });
+  if (!res.ok) {
+    // If usage tracking itself fails, fail open rather than blocking
+    // people from using the app over an infrastructure hiccup.
+    console.warn("Usage check failed, allowing request:", await res.text().catch(() => ""));
+    return { allowed: true, count: null };
+  }
+  const count = await res.json().catch(() => null);
+  return { allowed: count === null || count <= MONTHLY_USAGE_LIMIT, count };
+}
+
 // ---------- API layer ----------
 
 function buildSystemPrompt(includeContext) {
@@ -412,6 +439,21 @@ export default function SmartTrade() {
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsError, setSettingsError] = useState(null);
   const [settingsNotice, setSettingsNotice] = useState(null);
+  const [monthlyUsageCount, setMonthlyUsageCount] = useState(null);
+
+  useEffect(() => {
+    if (view !== "settings" || !session?.accessToken) return;
+    (async () => {
+      try {
+        const token = await getValidAccessToken();
+        const month = new Date().toISOString().slice(0, 7);
+        const rows = await supabaseRest(`usage_monthly?month=eq.${month}&select=count`, { accessToken: token });
+        setMonthlyUsageCount(rows?.[0]?.count ?? 0);
+      } catch (err) {
+        console.warn("Couldn't load usage count:", err);
+      }
+    })();
+  }, [view]);
 
   const handleChangePassword = async () => {
     setSettingsError(null);
@@ -749,6 +791,15 @@ export default function SmartTrade() {
     setNewsErrorDetail(null);
     try {
       const token = await getValidAccessToken();
+      if (!token) throw new Error("Please sign in to load today's digest.");
+
+      const usage = await checkAndIncrementUsage(token);
+      if (!usage.allowed) {
+        setNewsError(`You've reached this month's usage limit (${MONTHLY_USAGE_LIMIT}). It resets on the 1st.`);
+        setNewsLoading(false);
+        return;
+      }
+
       const data = await fetchDailyNewsWithRetry(2, 40000, token);
       setNews(data);
       setNewsFetchedAt(Date.now());
@@ -1075,6 +1126,14 @@ export default function SmartTrade() {
         setLoading(false);
         return;
       }
+
+      const usage = await checkAndIncrementUsage(token);
+      if (!usage.allowed) {
+        setError(`You've reached this month's analysis limit (${MONTHLY_USAGE_LIMIT}). It resets on the 1st.`);
+        setLoading(false);
+        return;
+      }
+
       let parsed;
       try {
         parsed = await analyzeWithRetry(imageBase64, mediaType, includeContext, 3, includeContext ? 40000 : 20000, token);
@@ -2100,9 +2159,14 @@ export default function SmartTrade() {
                   {/* Subscription */}
                   <div style={{ marginBottom: 16, padding: 18, background: PANEL, border: `1px solid ${GOLD}33`, borderRadius: 8 }}>
                     <div className="mono" style={{ fontSize: 12, fontWeight: 600, color: TEXT, marginBottom: 6 }}>Subscription</div>
-                    <p className="mono" style={{ fontSize: 12.5, color: MUTE, lineHeight: 1.6, margin: "0 0 12px" }}>
+                    <p className="mono" style={{ fontSize: 12.5, color: MUTE, lineHeight: 1.6, margin: "0 0 10px" }}>
                       Billing isn't connected yet — every account currently has full access while this is being built.
                     </p>
+                    {monthlyUsageCount !== null && (
+                      <p className="mono" style={{ fontSize: 12, color: TEXT, margin: "0 0 12px" }}>
+                        <strong style={{ color: GOLD_BRIGHT }}>{monthlyUsageCount}</strong> / {MONTHLY_USAGE_LIMIT} actions used this month
+                      </p>
+                    )}
                     <button onClick={() => setView("pricing")} className="btn mono" style={{ padding: "9px 16px", background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})`, color: INK, border: "none", borderRadius: 5, fontSize: 12.5, fontWeight: 600 }}>
                       View plans
                     </button>

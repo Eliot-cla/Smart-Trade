@@ -134,7 +134,7 @@ JSON shape (exact keys):
 }`;
 }
 
-async function callClaudeVision(imageBase64, mediaType, includeContext, signal) {
+async function callClaudeVision(imageBase64, mediaType, includeContext, signal, accessToken) {
   const body = {
     model: "claude-sonnet-4-6",
     max_tokens: includeContext ? 1700 : 1300,
@@ -153,7 +153,10 @@ async function callClaudeVision(imageBase64, mediaType, includeContext, signal) 
 
   const response = await fetch("/api/anthropic", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
     body: JSON.stringify(body),
     signal,
   });
@@ -183,11 +186,11 @@ async function callClaudeVision(imageBase64, mediaType, includeContext, signal) 
   }
 }
 
-async function callWithTimeout(imageBase64, mediaType, includeContext, timeoutMs) {
+async function callWithTimeout(imageBase64, mediaType, includeContext, timeoutMs, accessToken) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await callClaudeVision(imageBase64, mediaType, includeContext, controller.signal);
+    return await callClaudeVision(imageBase64, mediaType, includeContext, controller.signal, accessToken);
   } catch (err) {
     if (err.name === "AbortError") throw new Error("timeout");
     throw err;
@@ -196,11 +199,11 @@ async function callWithTimeout(imageBase64, mediaType, includeContext, timeoutMs
   }
 }
 
-async function analyzeWithRetry(imageBase64, mediaType, includeContext, maxAttempts = 3, timeoutMs = 22000) {
+async function analyzeWithRetry(imageBase64, mediaType, includeContext, maxAttempts = 3, timeoutMs = 22000, accessToken) {
   let lastErr;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      return await callWithTimeout(imageBase64, mediaType, includeContext, timeoutMs);
+      return await callWithTimeout(imageBase64, mediaType, includeContext, timeoutMs, accessToken);
     } catch (err) {
       lastErr = err;
       console.warn(`Analysis attempt ${attempt} failed:`, err.message);
@@ -234,10 +237,13 @@ JSON shape:
   ]
 }`;
 
-async function fetchDailyNews(signal) {
+async function fetchDailyNews(signal, accessToken) {
   const response = await fetch("/api/anthropic", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
       max_tokens: 1400,
@@ -270,13 +276,13 @@ async function fetchDailyNews(signal) {
   }
 }
 
-async function fetchDailyNewsWithRetry(maxAttempts = 3, timeoutMs = 25000) {
+async function fetchDailyNewsWithRetry(maxAttempts = 3, timeoutMs = 25000, accessToken) {
   let lastErr;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const result = await fetchDailyNews(controller.signal);
+      const result = await fetchDailyNews(controller.signal, accessToken);
       clearTimeout(timer);
       return result;
     } catch (err) {
@@ -705,7 +711,7 @@ export default function SmartTrade() {
     setNewsError(null);
     setNewsErrorDetail(null);
     try {
-      const data = await fetchDailyNewsWithRetry(2, 40000);
+      const data = await fetchDailyNewsWithRetry(2, 40000, session?.accessToken);
       setNews(data);
       setNewsFetchedAt(Date.now());
     } catch (err) {
@@ -1014,6 +1020,10 @@ export default function SmartTrade() {
 
   const analyze = async () => {
     if (!imageBase64) return;
+    if (!session?.accessToken) {
+      setError("Please sign in to analyze a chart — this protects the service from abuse.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setRawErrorDetail(null);
@@ -1022,12 +1032,12 @@ export default function SmartTrade() {
     try {
       let parsed;
       try {
-        parsed = await analyzeWithRetry(imageBase64, mediaType, includeContext, 3, includeContext ? 40000 : 20000);
+        parsed = await analyzeWithRetry(imageBase64, mediaType, includeContext, 3, includeContext ? 40000 : 20000, session?.accessToken);
       } catch (firstErr) {
         if (includeContext) {
           console.warn("Context-enabled analysis failed, retrying without context:", firstErr.message);
           try {
-            parsed = await analyzeWithRetry(imageBase64, mediaType, false, 2, 20000);
+            parsed = await analyzeWithRetry(imageBase64, mediaType, false, 2, 20000, session?.accessToken);
           } catch (secondErr) {
             throw secondErr;
           }

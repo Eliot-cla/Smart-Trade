@@ -35,6 +35,22 @@ async function supabaseAuthRequest(path, body) {
 
 const signUp = (email, password) => supabaseAuthRequest("signup", { email, password });
 const signIn = (email, password) => supabaseAuthRequest("token?grant_type=password", { email, password });
+// Supabase never reveals whether the email exists — it always "succeeds"
+// so this can't be used to enumerate accounts.
+const requestPasswordReset = (email) => supabaseAuthRequest("recover", { email });
+
+// Decodes a Supabase JWT payload client-side (no verification — just
+// reading claims already trusted because the token itself came straight
+// from Supabase's auth endpoint).
+function decodeJwtPayload(token) {
+  try {
+    const payload = token.split(".")[1];
+    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
 
 // Extracts the user id (the "sub" claim) directly from the JWT the auth
 // endpoint returns. Sending this explicitly on every insert removes the
@@ -43,13 +59,7 @@ const signIn = (email, password) => supabaseAuthRequest("token?grant_type=passwo
 // of guessed by the database, and RLS still validates it against the
 // token's own auth.uid() at write time either way.
 function decodeJwtSub(token) {
-  try {
-    const payload = token.split(".")[1];
-    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-    return JSON.parse(json).sub || null;
-  } catch {
-    return null;
-  }
+  return decodeJwtPayload(token)?.sub || null;
 }
 
 async function updateSupabaseUser(accessToken, updates) {
@@ -444,6 +454,79 @@ export default function SmartTrade() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [authErrorDetail, setAuthErrorDetail] = useState(null);
+
+  const [forgotPasswordMode, setForgotPasswordMode] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotNotice, setForgotNotice] = useState(null);
+  const [forgotError, setForgotError] = useState(null);
+
+  const [resetToken, setResetToken] = useState(null);
+  const [resetNewPassword, setResetNewPassword] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetNotice, setResetNotice] = useState(null);
+  const [resetError, setResetError] = useState(null);
+
+  // Supabase sends the recovery link back to the site with the token in
+  // the URL fragment (#access_token=...&type=recovery) rather than as a
+  // normal query param. Catch that on load and switch to the "set a new
+  // password" screen instead of the app's usual entry flow.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash;
+    if (hash && hash.includes("type=recovery")) {
+      const params = new URLSearchParams(hash.replace(/^#/, ""));
+      const token = params.get("access_token");
+      if (token) {
+        setResetToken(token);
+        setView("resetPassword");
+        // Clean the sensitive token out of the visible URL.
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+    }
+  }, []);
+
+  const handleRequestReset = async () => {
+    setForgotError(null);
+    setForgotNotice(null);
+    if (!forgotEmail || !forgotEmail.includes("@")) {
+      setForgotError("Enter a valid email address.");
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      await requestPasswordReset(forgotEmail);
+      setForgotNotice("If an account exists for that email, a reset link is on its way — check your inbox.");
+    } catch (err) {
+      setForgotError(String(err.message || err));
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleSetNewPassword = async () => {
+    setResetError(null);
+    setResetNotice(null);
+    if (resetNewPassword.length < 6) {
+      setResetError("Minimum 6 characters.");
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await updateSupabaseUser(resetToken, { password: resetNewPassword });
+      const payload = decodeJwtPayload(resetToken);
+      const s = { accessToken: resetToken, email: payload?.email || "", userId: payload?.sub || null };
+      setSession(s);
+      persistSession(s);
+      setResetNotice("Password updated — you're signed in.");
+      setTimeout(() => setView("app"), 1200);
+    } catch (err) {
+      setResetError(String(err.message || err));
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   const [authNotice, setAuthNotice] = useState(null);
 
   // Remember the session across page reloads via localStorage — a real
@@ -1556,76 +1639,137 @@ export default function SmartTrade() {
 
           <div className="fade" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: GOLD }} />
-            <span className="mono" style={{ fontSize: 11, letterSpacing: 3, color: GOLD, textTransform: "uppercase" }}>{authMode === "signup" ? "Create account" : "Welcome back"}</span>
+            <span className="mono" style={{ fontSize: 11, letterSpacing: 3, color: GOLD, textTransform: "uppercase" }}>
+              {forgotPasswordMode ? "Reset password" : authMode === "signup" ? "Create account" : "Welcome back"}
+            </span>
           </div>
           <h1 className="disp fade" style={{ fontSize: 32, fontWeight: 480, margin: "6px 0 24px", letterSpacing: -0.3, lineHeight: 1.1 }}>
-            {authMode === "signup" ? "One account, every read saved." : "Sign in to your account."}
+            {forgotPasswordMode ? "Get a reset link." : authMode === "signup" ? "One account, every read saved." : "Sign in to your account."}
           </h1>
 
-          <div className="fade" style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 18 }}>
-            <input
-              type="email"
-              placeholder="Email"
-              value={authEmail}
-              onChange={(e) => setAuthEmail(e.target.value)}
-              className="mono"
-              style={{ padding: "14px 16px", borderRadius: 6, background: PANEL, border: `1px solid ${LINE}`, color: TEXT, fontSize: 14, outline: "none" }}
-            />
-            <input
-              type="password"
-              placeholder="Password"
-              value={authPassword}
-              onChange={(e) => setAuthPassword(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleAuth(); }}
-              className="mono"
-              style={{ padding: "14px 16px", borderRadius: 6, background: PANEL, border: `1px solid ${LINE}`, color: TEXT, fontSize: 14, outline: "none" }}
-            />
-            {authMode === "signup" && authPassword.length > 0 && (
-              <span className="mono" style={{ fontSize: 11.5, color: authPassword.length >= 6 ? GREEN : RED, marginTop: -6 }}>
-                {authPassword.length >= 6 ? "✓ Password length OK" : "Minimum 6 characters"}
-              </span>
-            )}
-          </div>
+          {forgotPasswordMode ? (
+            <>
+              <div className="fade" style={{ marginBottom: 18 }}>
+                <input
+                  type="email"
+                  placeholder="Email"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleRequestReset(); }}
+                  className="mono"
+                  style={{ width: "100%", padding: "14px 16px", borderRadius: 6, background: PANEL, border: `1px solid ${LINE}`, color: TEXT, fontSize: 14, outline: "none" }}
+                />
+              </div>
 
-          {authError && (
-            <div className="mono fade" style={{ marginBottom: 14, padding: 12, background: RED + "14", border: `1px solid ${RED}44`, borderRadius: 5, fontSize: 12.5, color: RED }}>
-              <div>{authError}</div>
-              {authErrorDetail && authErrorDetail !== authError && (
-                <details style={{ marginTop: 8 }}>
-                  <summary style={{ cursor: "pointer", fontSize: 11, color: RED + "CC" }}>Technical details</summary>
-                  <div style={{ marginTop: 6, padding: 8, background: INK, borderRadius: 4, fontSize: 10.5, color: MUTE, wordBreak: "break-all", userSelect: "text" }}>
-                    {authErrorDetail}
-                  </div>
-                </details>
+              {forgotError && (
+                <div className="mono fade" style={{ marginBottom: 14, padding: 12, background: RED + "14", border: `1px solid ${RED}44`, borderRadius: 5, fontSize: 12.5, color: RED }}>
+                  {forgotError}
+                </div>
               )}
-            </div>
-          )}
-          {authNotice && (
-            <div className="mono fade" style={{ marginBottom: 14, padding: 12, background: GOLD + "14", border: `1px solid ${GOLD}44`, borderRadius: 5, fontSize: 12.5, color: GOLD_BRIGHT }}>
-              {authNotice}
-            </div>
-          )}
+              {forgotNotice && (
+                <div className="mono fade" style={{ marginBottom: 14, padding: 12, background: GREEN + "14", border: `1px solid ${GREEN}44`, borderRadius: 5, fontSize: 12.5, color: GREEN }}>
+                  {forgotNotice}
+                </div>
+              )}
 
-          <button
-            onClick={handleAuth}
-            disabled={authLoading}
-            className="btn mono fade"
-            style={{
-              width: "100%", padding: "15px 20px", background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})`,
-              color: INK, border: "none", borderRadius: 6, fontSize: 14, fontWeight: 700, letterSpacing: 0.3,
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-            }}
-          >
-            {authLoading ? (<><Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> {authMode === "signup" ? "Creating account…" : "Signing in…"}</>) : (authMode === "signup" ? "Create account" : "Sign in")}
-          </button>
+              <button
+                onClick={handleRequestReset}
+                disabled={forgotLoading}
+                className="btn mono fade"
+                style={{
+                  width: "100%", padding: "15px 20px", background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})`,
+                  color: INK, border: "none", borderRadius: 6, fontSize: 14, fontWeight: 700, letterSpacing: 0.3,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                }}
+              >
+                {forgotLoading ? (<><Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> Sending…</>) : "Send reset link"}
+              </button>
 
-          <button
-            onClick={() => { setAuthMode(authMode === "signup" ? "signin" : "signup"); setAuthError(null); setAuthNotice(null); }}
-            className="btn mono"
-            style={{ width: "100%", padding: 12, marginTop: 10, background: "transparent", border: "none", color: MUTE, fontSize: 12.5 }}
-          >
-            {authMode === "signup" ? "Already have an account? Sign in" : "New here? Create an account"}
-          </button>
+              <button
+                onClick={() => { setForgotPasswordMode(false); setForgotError(null); setForgotNotice(null); }}
+                className="btn mono"
+                style={{ width: "100%", padding: 12, marginTop: 10, background: "transparent", border: "none", color: MUTE, fontSize: 12.5 }}
+              >
+                Back to sign in
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="fade" style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 18 }}>
+                <input
+                  type="email"
+                  placeholder="Email"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  className="mono"
+                  style={{ padding: "14px 16px", borderRadius: 6, background: PANEL, border: `1px solid ${LINE}`, color: TEXT, fontSize: 14, outline: "none" }}
+                />
+                <input
+                  type="password"
+                  placeholder="Password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleAuth(); }}
+                  className="mono"
+                  style={{ padding: "14px 16px", borderRadius: 6, background: PANEL, border: `1px solid ${LINE}`, color: TEXT, fontSize: 14, outline: "none" }}
+                />
+                {authMode === "signup" && authPassword.length > 0 && (
+                  <span className="mono" style={{ fontSize: 11.5, color: authPassword.length >= 6 ? GREEN : RED, marginTop: -6 }}>
+                    {authPassword.length >= 6 ? "✓ Password length OK" : "Minimum 6 characters"}
+                  </span>
+                )}
+                {authMode === "signin" && (
+                  <button
+                    onClick={() => { setForgotPasswordMode(true); setForgotEmail(authEmail); setForgotError(null); setForgotNotice(null); }}
+                    className="btn mono"
+                    style={{ alignSelf: "flex-end", background: "transparent", border: "none", color: MUTE, fontSize: 11.5, padding: 0, marginTop: -4 }}
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </div>
+
+              {authError && (
+                <div className="mono fade" style={{ marginBottom: 14, padding: 12, background: RED + "14", border: `1px solid ${RED}44`, borderRadius: 5, fontSize: 12.5, color: RED }}>
+                  <div>{authError}</div>
+                  {authErrorDetail && authErrorDetail !== authError && (
+                    <details style={{ marginTop: 8 }}>
+                      <summary style={{ cursor: "pointer", fontSize: 11, color: RED + "CC" }}>Technical details</summary>
+                      <div style={{ marginTop: 6, padding: 8, background: INK, borderRadius: 4, fontSize: 10.5, color: MUTE, wordBreak: "break-all", userSelect: "text" }}>
+                        {authErrorDetail}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              )}
+              {authNotice && (
+                <div className="mono fade" style={{ marginBottom: 14, padding: 12, background: GOLD + "14", border: `1px solid ${GOLD}44`, borderRadius: 5, fontSize: 12.5, color: GOLD_BRIGHT }}>
+                  {authNotice}
+                </div>
+              )}
+
+              <button
+                onClick={handleAuth}
+                disabled={authLoading}
+                className="btn mono fade"
+                style={{
+                  width: "100%", padding: "15px 20px", background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})`,
+                  color: INK, border: "none", borderRadius: 6, fontSize: 14, fontWeight: 700, letterSpacing: 0.3,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                }}
+              >
+                {authLoading ? (<><Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> {authMode === "signup" ? "Creating account…" : "Signing in…"}</>) : (authMode === "signup" ? "Create account" : "Sign in")}
+              </button>
+
+              <button
+                onClick={() => { setAuthMode(authMode === "signup" ? "signin" : "signup"); setAuthError(null); setAuthNotice(null); }}
+                className="btn mono"
+                style={{ width: "100%", padding: 12, marginTop: 10, background: "transparent", border: "none", color: MUTE, fontSize: 12.5 }}
+              >
+                {authMode === "signup" ? "Already have an account? Sign in" : "New here? Create an account"}
+              </button>
+            </>
+          )}
 
           <p className="mono" style={{ fontSize: 10.5, color: "#5A564E", marginTop: 20, textAlign: "center", lineHeight: 1.6 }}>
             Your account keeps your Track Record saved across sessions and devices.
@@ -1639,6 +1783,72 @@ export default function SmartTrade() {
             >
               Skip (testing only)
             </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ---------- RESET PASSWORD (reached via emailed recovery link) ----------
+  if (view === "resetPassword") {
+    return (
+      <div style={{ minHeight: "100vh", background: INK, color: TEXT, fontFamily: "'Inter', sans-serif", display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+        {sharedStyles}
+        <div style={{ position: "absolute", top: "20%", left: "50%", transform: "translate(-50%, -50%)", width: 500, height: 500, background: `radial-gradient(circle, ${GOLD}18, transparent 70%)`, pointerEvents: "none" }} />
+        <div style={{ maxWidth: 420, margin: "0 auto", padding: "40px 24px", position: "relative", width: "100%" }}>
+          <div className="fade" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: GOLD }} />
+            <span className="mono" style={{ fontSize: 11, letterSpacing: 3, color: GOLD, textTransform: "uppercase" }}>Reset password</span>
+          </div>
+          <h1 className="disp fade" style={{ fontSize: 32, fontWeight: 480, margin: "6px 0 24px", letterSpacing: -0.3, lineHeight: 1.1 }}>
+            Choose a new password.
+          </h1>
+
+          {!resetToken ? (
+            <div className="mono" style={{ padding: 16, background: RED + "14", border: `1px solid ${RED}44`, borderRadius: 6, fontSize: 12.5, color: RED }}>
+              This reset link looks invalid or expired. Request a new one from the sign-in screen.
+            </div>
+          ) : (
+            <>
+              <input
+                type="password"
+                placeholder="New password"
+                value={resetNewPassword}
+                onChange={(e) => setResetNewPassword(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSetNewPassword(); }}
+                className="mono"
+                style={{ width: "100%", padding: "14px 16px", borderRadius: 6, background: PANEL, border: `1px solid ${LINE}`, color: TEXT, fontSize: 14, outline: "none", marginBottom: 8 }}
+              />
+              {resetNewPassword.length > 0 && (
+                <div className="mono" style={{ fontSize: 11.5, color: resetNewPassword.length >= 6 ? GREEN : RED, marginBottom: 14 }}>
+                  {resetNewPassword.length >= 6 ? "✓ Password length OK" : "Minimum 6 characters"}
+                </div>
+              )}
+
+              {resetError && (
+                <div className="mono fade" style={{ marginBottom: 14, padding: 12, background: RED + "14", border: `1px solid ${RED}44`, borderRadius: 5, fontSize: 12.5, color: RED }}>
+                  {resetError}
+                </div>
+              )}
+              {resetNotice && (
+                <div className="mono fade" style={{ marginBottom: 14, padding: 12, background: GREEN + "14", border: `1px solid ${GREEN}44`, borderRadius: 5, fontSize: 12.5, color: GREEN, display: "flex", alignItems: "center", gap: 7 }}>
+                  <Check size={13} /> {resetNotice}
+                </div>
+              )}
+
+              <button
+                onClick={handleSetNewPassword}
+                disabled={resetLoading}
+                className="btn mono"
+                style={{
+                  width: "100%", padding: "15px 20px", background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})`,
+                  color: INK, border: "none", borderRadius: 6, fontSize: 14, fontWeight: 700, letterSpacing: 0.3,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                }}
+              >
+                {resetLoading ? (<><Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> Updating…</>) : "Set new password"}
+              </button>
+            </>
           )}
         </div>
       </div>

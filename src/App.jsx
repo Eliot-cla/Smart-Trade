@@ -422,7 +422,8 @@ export default function SmartTrade() {
     }
     setSettingsLoading(true);
     try {
-      await updateSupabaseUser(session.accessToken, { password: newPassword });
+      const token = await getValidAccessToken();
+      await updateSupabaseUser(token, { password: newPassword });
       setSettingsNotice("Password updated.");
       setNewPassword("");
     } catch (err) {
@@ -441,7 +442,8 @@ export default function SmartTrade() {
     }
     setSettingsLoading(true);
     try {
-      await updateSupabaseUser(session.accessToken, { email: newEmail });
+      const token = await getValidAccessToken();
+      await updateSupabaseUser(token, { email: newEmail });
       setSettingsNotice("Check your new inbox to confirm the email change.");
       setNewEmail("");
     } catch (err) {
@@ -468,6 +470,7 @@ export default function SmartTrade() {
   const [forgotError, setForgotError] = useState(null);
 
   const [resetToken, setResetToken] = useState(null);
+  const [resetRefreshToken, setResetRefreshToken] = useState(null);
   const [resetNewPassword, setResetNewPassword] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
   const [resetNotice, setResetNotice] = useState(null);
@@ -485,6 +488,7 @@ export default function SmartTrade() {
       const token = params.get("access_token");
       if (token) {
         setResetToken(token);
+        setResetRefreshToken(params.get("refresh_token"));
         setView("resetPassword");
         // Clean the sensitive token out of the visible URL.
         window.history.replaceState(null, "", window.location.pathname + window.location.search);
@@ -521,7 +525,7 @@ export default function SmartTrade() {
     try {
       await updateSupabaseUser(resetToken, { password: resetNewPassword });
       const payload = decodeJwtPayload(resetToken);
-      const s = { accessToken: resetToken, email: payload?.email || "", userId: payload?.sub || null };
+      const s = { accessToken: resetToken, refreshToken: resetRefreshToken, email: payload?.email || "", userId: payload?.sub || null };
       setSession(s);
       persistSession(s);
       setResetNotice("Password updated — you're signed in.");
@@ -569,7 +573,7 @@ export default function SmartTrade() {
       if (authMode === "signup") {
         const data = await signUp(authEmail, authPassword);
         if (data?.access_token) {
-          const s = { accessToken: data.access_token, email: authEmail, userId: decodeJwtSub(data.access_token) };
+          const s = { accessToken: data.access_token, refreshToken: data.refresh_token, email: authEmail, userId: decodeJwtSub(data.access_token) };
           setSession(s);
           persistSession(s);
           setView("pricing");
@@ -580,7 +584,7 @@ export default function SmartTrade() {
         }
       } else {
         const data = await signIn(authEmail, authPassword);
-        const s = { accessToken: data.access_token, email: authEmail, userId: decodeJwtSub(data.access_token) };
+        const s = { accessToken: data.access_token, refreshToken: data.refresh_token, email: authEmail, userId: decodeJwtSub(data.access_token) };
         setSession(s);
         persistSession(s);
         setView("pricing");
@@ -603,6 +607,36 @@ export default function SmartTrade() {
     setSession(null);
     try { localStorage.removeItem("smarttrade_session"); } catch {}
     setView("welcome");
+  };
+
+  // Access tokens expire after about an hour. Rather than let API calls
+  // start silently failing once that happens, check the token's own
+  // expiry (from its "exp" claim) before every use and transparently
+  // swap in a fresh one via the refresh token if it's about to lapse.
+  const getValidAccessToken = async () => {
+    if (!session?.accessToken) return null;
+    const payload = decodeJwtPayload(session.accessToken);
+    const expiresAtMs = payload?.exp ? payload.exp * 1000 : 0;
+    const refreshBufferMs = 60 * 1000; // refresh a minute early, not right at the wire
+    if (Date.now() < expiresAtMs - refreshBufferMs) return session.accessToken;
+
+    if (!session.refreshToken) {
+      // No refresh token to fall back on (e.g. an older stored session) —
+      // the person just has to sign in again.
+      logOut();
+      return null;
+    }
+    try {
+      const data = await supabaseAuthRequest("token?grant_type=refresh_token", { refresh_token: session.refreshToken });
+      const refreshed = { accessToken: data.access_token, refreshToken: data.refresh_token, email: session.email, userId: decodeJwtSub(data.access_token) };
+      setSession(refreshed);
+      persistSession(refreshed);
+      return refreshed.accessToken;
+    } catch (err) {
+      console.warn("Session refresh failed, signing out:", err);
+      logOut();
+      return null;
+    }
   };
 
   const [image, setImage] = useState(null);
@@ -659,7 +693,8 @@ export default function SmartTrade() {
     }
     setHistoryLoading(true);
     try {
-      const rows = await supabaseRest("analyses?select=*&order=ts.desc", { accessToken: session.accessToken });
+      const token = await getValidAccessToken();
+      const rows = await supabaseRest("analyses?select=*&order=ts.desc", { accessToken: token });
       const fetched = (rows || []).map(dbRowToRecord);
       // Merge rather than overwrite: a save that hasn't reached the
       // database yet (still "local-...") shouldn't vanish just because
@@ -685,7 +720,8 @@ export default function SmartTrade() {
     setHistoryItems((prev) => prev.map((h) => (h.id === id ? updated : h)));
     if (!session?.accessToken) return;
     try {
-      await supabaseRest(`analyses?id=eq.${id}`, { method: "PATCH", body: { outcome }, accessToken: session.accessToken });
+      const token = await getValidAccessToken();
+      await supabaseRest(`analyses?id=eq.${id}`, { method: "PATCH", body: { outcome }, accessToken: token });
       setStorageUnavailable(false);
     } catch (err) {
       console.warn("Couldn't persist outcome update:", err);
@@ -697,7 +733,8 @@ export default function SmartTrade() {
     setHistoryItems((prev) => prev.filter((h) => h.id !== id));
     if (!session?.accessToken) return;
     try {
-      await supabaseRest(`analyses?id=eq.${id}`, { method: "DELETE", accessToken: session.accessToken });
+      const token = await getValidAccessToken();
+      await supabaseRest(`analyses?id=eq.${id}`, { method: "DELETE", accessToken: token });
     } catch (err) {
       console.warn("Couldn't delete from Supabase:", err);
     }
@@ -711,7 +748,8 @@ export default function SmartTrade() {
     setNewsError(null);
     setNewsErrorDetail(null);
     try {
-      const data = await fetchDailyNewsWithRetry(2, 40000, session?.accessToken);
+      const token = await getValidAccessToken();
+      const data = await fetchDailyNewsWithRetry(2, 40000, token);
       setNews(data);
       setNewsFetchedAt(Date.now());
     } catch (err) {
@@ -995,7 +1033,8 @@ export default function SmartTrade() {
     }
 
     try {
-      const rows = await supabaseRest("analyses", { method: "POST", body: recordToDbInsert(record), accessToken: session.accessToken });
+      const token = await getValidAccessToken();
+      const rows = await supabaseRest("analyses", { method: "POST", body: recordToDbInsert(record), accessToken: token });
       const saved = rows?.[0];
       if (saved) {
         // Swap the temporary local id for the real database id so later
@@ -1030,14 +1069,20 @@ export default function SmartTrade() {
     setResult(null);
     setSavedToHistory(false);
     try {
+      const token = await getValidAccessToken();
+      if (!token) {
+        setError("Your session expired — please sign in again.");
+        setLoading(false);
+        return;
+      }
       let parsed;
       try {
-        parsed = await analyzeWithRetry(imageBase64, mediaType, includeContext, 3, includeContext ? 40000 : 20000, session?.accessToken);
+        parsed = await analyzeWithRetry(imageBase64, mediaType, includeContext, 3, includeContext ? 40000 : 20000, token);
       } catch (firstErr) {
         if (includeContext) {
           console.warn("Context-enabled analysis failed, retrying without context:", firstErr.message);
           try {
-            parsed = await analyzeWithRetry(imageBase64, mediaType, false, 2, 20000, session?.accessToken);
+            parsed = await analyzeWithRetry(imageBase64, mediaType, false, 2, 20000, token);
           } catch (secondErr) {
             throw secondErr;
           }

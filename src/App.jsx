@@ -516,6 +516,7 @@ export default function SmartTrade() {
   const [evaluatingId, setEvaluatingId] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [storageUnavailable, setStorageUnavailable] = useState(false);
+  const [storageErrorDetail, setStorageErrorDetail] = useState(null);
 
   // Maps between the app's camelCase record shape and the DB's
   // snake_case columns.
@@ -894,11 +895,19 @@ export default function SmartTrade() {
         // Swap the temporary local id for the real database id so later
         // outcome updates and deletes target the right row.
         setHistoryItems((prev) => prev.map((h) => (h.id === record.id ? dbRowToRecord(saved) : h)));
+        setStorageUnavailable(false);
+        setStorageErrorDetail(null);
+      } else {
+        // The insert didn't error, but Supabase returned no row back —
+        // still worth flagging since we can't confirm it actually saved.
+        console.warn("Supabase insert returned no row:", rows);
+        setStorageUnavailable(true);
+        setStorageErrorDetail("insert_returned_no_row");
       }
-      setStorageUnavailable(false);
     } catch (err) {
       console.warn("Background persistence to Supabase failed, entry kept in session only:", err);
       setStorageUnavailable(true);
+      setStorageErrorDetail(String(err.message || err));
     }
     return true;
   };
@@ -1423,12 +1432,22 @@ export default function SmartTrade() {
           )}
 
           {storageUnavailable && (
-            <div className="mono fade" style={{ display: "flex", gap: 8, padding: 12, background: GOLD + "10", border: `1px solid ${GOLD}33`, borderRadius: 5, fontSize: 11.5, color: MUTE, lineHeight: 1.5, marginBottom: 14 }}>
-              <AlertTriangle size={13} color={GOLD} style={{ flexShrink: 0, marginTop: 1 }} />
-              {session ? (
-                <span>Persistent storage isn't responding right now — entries below are kept for this session, but may not survive closing the app. Nothing you've done has been lost yet.</span>
-              ) : (
-                <span>You're browsing without an account, so entries below are only kept for this session — create an account to save your Track Record permanently.</span>
+            <div className="mono fade" style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, background: GOLD + "10", border: `1px solid ${GOLD}33`, borderRadius: 5, fontSize: 11.5, color: MUTE, lineHeight: 1.5, marginBottom: 14 }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <AlertTriangle size={13} color={GOLD} style={{ flexShrink: 0, marginTop: 1 }} />
+                {session ? (
+                  <span>Persistent storage isn't responding right now — entries below are kept for this session, but may not survive closing the app. Nothing you've done has been lost yet.</span>
+                ) : (
+                  <span>You're browsing without an account, so entries below are only kept for this session — create an account to save your Track Record permanently.</span>
+                )}
+              </div>
+              {session && storageErrorDetail && (
+                <details style={{ marginLeft: 21 }}>
+                  <summary style={{ cursor: "pointer", fontSize: 10.5, color: GOLD }}>Technical details</summary>
+                  <div style={{ marginTop: 6, padding: 8, background: INK, borderRadius: 4, fontSize: 10.5, color: MUTE, wordBreak: "break-all", userSelect: "text" }}>
+                    {storageErrorDetail}
+                  </div>
+                </details>
               )}
             </div>
           )}
@@ -2044,6 +2063,12 @@ export default function SmartTrade() {
                   )}
                 </button>
               </div>
+
+              {savedToHistory && session && storageUnavailable && (
+                <p className="mono" style={{ fontSize: 11, color: GOLD, marginTop: 8, textAlign: "center", lineHeight: 1.5 }}>
+                  ⚠ Saved locally, but didn't sync to your account — check Track Record for details.
+                </p>
+              )}
 
               <button onClick={reset} className="btn mono" style={{ marginTop: 10, width: "100%", maxWidth: 420, marginLeft: "auto", marginRight: "auto", display: "block", padding: 12, background: "transparent", border: `1px solid ${LINE}`, borderRadius: 5, color: MUTE, fontSize: 13 }}>
                 Analyze another chart

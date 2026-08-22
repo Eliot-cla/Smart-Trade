@@ -440,6 +440,7 @@ export default function SmartTrade() {
   const [settingsError, setSettingsError] = useState(null);
   const [settingsNotice, setSettingsNotice] = useState(null);
   const [monthlyUsageCount, setMonthlyUsageCount] = useState(null);
+  const [currentPlan, setCurrentPlan] = useState(null); // { plan, status } | null
 
   const handleChangePassword = async () => {
     setSettingsError(null);
@@ -521,6 +522,29 @@ export default function SmartTrade() {
         // Clean the sensitive token out of the visible URL.
         window.history.replaceState(null, "", window.location.pathname + window.location.search);
       }
+    }
+  }, []);
+
+  const [checkoutNotice, setCheckoutNotice] = useState(null);
+
+  // Stripe redirects back here after checkout with ?checkout=success or
+  // ?checkout=cancelled. The webhook (not this) is the source of truth
+  // for actually granting access — this is purely a friendly on-screen
+  // confirmation, since the webhook can take a moment to land.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get("checkout");
+    if (status === "success") {
+      setCheckoutNotice("Payment received — your plan will activate within a few seconds.");
+      setView("settings");
+    } else if (status === "cancelled") {
+      setCheckoutNotice(null);
+    }
+    if (status) {
+      params.delete("checkout");
+      const qs = params.toString();
+      window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
     }
   }, []);
 
@@ -678,8 +702,64 @@ export default function SmartTrade() {
       } catch (err) {
         console.warn("Couldn't load usage count:", err);
       }
+      try {
+        const token = await getValidAccessToken();
+        const rows = await supabaseRest("subscriptions?select=plan,status", { accessToken: token });
+        setCurrentPlan(rows?.[0] || null);
+      } catch (err) {
+        console.warn("Couldn't load subscription status:", err);
+      }
     })();
   }, [view]);
+
+  const [checkoutLoading, setCheckoutLoading] = useState(null); // holds the priceId currently redirecting, or null
+  const [checkoutError, setCheckoutError] = useState(null);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [portalError, setPortalError] = useState(null);
+
+  const startCheckout = async (priceId) => {
+    setCheckoutError(null);
+    if (!session?.accessToken) {
+      setCheckoutError("Please sign in first.");
+      setView("auth");
+      return;
+    }
+    setCheckoutLoading(priceId);
+    try {
+      const token = await getValidAccessToken();
+      const res = await fetch("/api/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ priceId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || `checkout_error_${res.status}`);
+      window.location.href = data.url; // hand off to Stripe's own hosted page
+    } catch (err) {
+      console.error("Checkout failed:", err);
+      setCheckoutError("Couldn't start checkout — please try again.");
+      setCheckoutLoading(null);
+    }
+  };
+
+  const openBillingPortal = async () => {
+    setPortalError(null);
+    setPortalLoading(true);
+    try {
+      const token = await getValidAccessToken();
+      const res = await fetch("/api/create-portal-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || `portal_error_${res.status}`);
+      window.location.href = data.url;
+    } catch (err) {
+      console.error("Billing portal failed:", err);
+      setPortalError(String(err.message || err));
+      setPortalLoading(false);
+    }
+  };
 
   const [image, setImage] = useState(null);
   const [imageBase64, setImageBase64] = useState(null);
@@ -1327,10 +1407,10 @@ export default function SmartTrade() {
   // ---------- PRICING ----------
   if (view === "pricing") {
     const plans = [
-      { id: "pack", name: "Starter Pack", price: "19.99 €", period: "one-time", tag: null, desc: "50 chart analyses, no expiry.", features: ["50 analyses", "Full structure breakdown", "Market context toggle"] },
-      { id: "pack2", name: "Growth Pack", price: "29.99 €", period: "one-time", tag: null, desc: "75 chart analyses, no expiry.", features: ["75 analyses", "Full structure breakdown", "Market context toggle"] },
-      { id: "monthly", name: "Unlimited Monthly", price: "39.99 €", period: "/ month", tag: "Most popular", desc: "Unlimited analyses, cancel anytime.", features: ["Unlimited analyses", "Full structure breakdown", "Market context toggle", "Priority processing"] },
-      { id: "annual", name: "Unlimited Annual", price: "299.99 €", period: "/ year", tag: "Save €180", desc: "Same as monthly, billed once a year.", features: ["Unlimited analyses", "Full structure breakdown", "Market context toggle", "Priority processing"] },
+      { id: "pack", priceId: "price_1U7BZcAbZYjrqJ1RNDSVfcQz", name: "Starter Pack", price: "9.99 €", period: "one-time", tag: null, desc: "20 chart analyses, no expiry.", features: ["20 analyses", "Full structure breakdown", "Market context toggle"] },
+      { id: "pack2", priceId: "price_1U7BaXAbZYjrqJ1RMynVBwr8", name: "Growth Pack", price: "19.99 €", period: "/ month", tag: null, desc: "75 chart analyses every month.", features: ["75 analyses / month", "Full structure breakdown", "Market context toggle"] },
+      { id: "monthly", priceId: "price_1U7B6gAbZYjrqJ1RGTA2ms4g", name: "Unlimited Monthly", price: "39.99 €", period: "/ month", tag: "Most popular", desc: "Unlimited analyses, cancel anytime.", features: ["Unlimited analyses", "Full structure breakdown", "Market context toggle", "Priority processing"] },
+      { id: "annual", priceId: "price_1U7BABAbZYjrqJ1RfEsxrngR", name: "Unlimited Annual", price: "299.99 €", period: "/ year", tag: "Save €180", desc: "Same as monthly, billed once a year.", features: ["Unlimited analyses", "Full structure breakdown", "Market context toggle", "Priority processing"] },
     ];
     const planIcon = { pack: Coins, pack2: Layers, monthly: Gauge, annual: Clock };
     return (
@@ -1345,9 +1425,14 @@ export default function SmartTrade() {
           <h1 className="disp" style={{ fontSize: 32, fontWeight: 480, margin: "6px 0 10px", letterSpacing: -0.3, lineHeight: 1.1 }}>
             Choose how you read charts.
           </h1>
-          <p className="mono" style={{ color: MUTE, fontSize: 14, lineHeight: 1.6, margin: "0 0 28px" }}>
+          <p className="mono" style={{ color: MUTE, fontSize: 14, lineHeight: 1.6, margin: "0 0 12px" }}>
             Start with a pack, or go unlimited monthly or yearly.
           </p>
+          {checkoutError && (
+            <div className="mono fade" style={{ marginBottom: 16, padding: 12, background: RED + "14", border: `1px solid ${RED}44`, borderRadius: 5, fontSize: 12.5, color: RED }}>
+              {checkoutError}
+            </div>
+          )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
             {plans.map((p) => {
@@ -1382,15 +1467,17 @@ export default function SmartTrade() {
                   ))}
                 </div>
                 <button
-                  onClick={() => setView("app")}
+                  onClick={() => startCheckout(p.priceId)}
+                  disabled={checkoutLoading === p.priceId}
                   className="btn mono"
                   style={{
                     width: "100%", padding: "11px 16px", borderRadius: 5, fontSize: 13, fontWeight: 600,
                     background: p.id === "monthly" ? `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})` : "transparent",
                     color: p.id === "monthly" ? INK : TEXT, border: p.id === "monthly" ? "none" : `1px solid ${LINE}`,
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
                   }}
                 >
-                  Choose {p.name}
+                  {checkoutLoading === p.priceId ? (<><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Redirecting…</>) : `Choose ${p.name}`}
                 </button>
               </div>
               );
@@ -2156,20 +2243,44 @@ export default function SmartTrade() {
                     </button>
                   </div>
 
+                  {checkoutNotice && (
+                    <div className="mono fade" style={{ marginBottom: 14, padding: 12, background: GREEN + "14", border: `1px solid ${GREEN}44`, borderRadius: 5, fontSize: 12.5, color: GREEN, display: "flex", alignItems: "center", gap: 7 }}>
+                      <Check size={13} /> {checkoutNotice}
+                    </div>
+                  )}
+
                   {/* Subscription */}
                   <div style={{ marginBottom: 16, padding: 18, background: PANEL, border: `1px solid ${GOLD}33`, borderRadius: 8 }}>
                     <div className="mono" style={{ fontSize: 12, fontWeight: 600, color: TEXT, marginBottom: 6 }}>Subscription</div>
-                    <p className="mono" style={{ fontSize: 12.5, color: MUTE, lineHeight: 1.6, margin: "0 0 10px" }}>
-                      Billing isn't connected yet — every account currently has full access while this is being built.
-                    </p>
+                    {currentPlan?.status === "active" ? (
+                      <p className="mono" style={{ fontSize: 12.5, color: TEXT, lineHeight: 1.6, margin: "0 0 10px" }}>
+                        Current plan: <strong style={{ color: GOLD_BRIGHT, textTransform: "capitalize" }}>{String(currentPlan.plan || "").replace(/_/g, " ")}</strong>
+                      </p>
+                    ) : (
+                      <p className="mono" style={{ fontSize: 12.5, color: MUTE, lineHeight: 1.6, margin: "0 0 10px" }}>
+                        No active plan yet.
+                      </p>
+                    )}
                     {monthlyUsageCount !== null && (
                       <p className="mono" style={{ fontSize: 12, color: TEXT, margin: "0 0 12px" }}>
                         <strong style={{ color: GOLD_BRIGHT }}>{monthlyUsageCount}</strong> / {MONTHLY_USAGE_LIMIT} actions used this month
                       </p>
                     )}
-                    <button onClick={() => setView("pricing")} className="btn mono" style={{ padding: "9px 16px", background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})`, color: INK, border: "none", borderRadius: 5, fontSize: 12.5, fontWeight: 600 }}>
-                      View plans
-                    </button>
+                    {portalError && (
+                      <div className="mono fade" style={{ marginBottom: 10, padding: 10, background: RED + "14", border: `1px solid ${RED}44`, borderRadius: 5, fontSize: 12, color: RED }}>
+                        {portalError}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button onClick={() => setView("pricing")} className="btn mono" style={{ padding: "9px 16px", background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})`, color: INK, border: "none", borderRadius: 5, fontSize: 12.5, fontWeight: 600 }}>
+                        View plans
+                      </button>
+                      {currentPlan?.status === "active" && (
+                        <button onClick={openBillingPortal} disabled={portalLoading} className="btn mono" style={{ padding: "9px 16px", background: "transparent", border: `1px solid ${LINE}`, color: TEXT, borderRadius: 5, fontSize: 12.5, fontWeight: 600 }}>
+                          {portalLoading ? "Loading…" : "Manage subscription"}
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <button onClick={logOut} className="btn mono" style={{ width: "100%", padding: 12, background: "transparent", border: `1px solid ${LINE}`, borderRadius: 5, color: MUTE, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>

@@ -441,20 +441,6 @@ export default function SmartTrade() {
   const [settingsNotice, setSettingsNotice] = useState(null);
   const [monthlyUsageCount, setMonthlyUsageCount] = useState(null);
 
-  useEffect(() => {
-    if (view !== "settings" || !session?.accessToken) return;
-    (async () => {
-      try {
-        const token = await getValidAccessToken();
-        const month = new Date().toISOString().slice(0, 7);
-        const rows = await supabaseRest(`usage_monthly?month=eq.${month}&select=count`, { accessToken: token });
-        setMonthlyUsageCount(rows?.[0]?.count ?? 0);
-      } catch (err) {
-        console.warn("Couldn't load usage count:", err);
-      }
-    })();
-  }, [view]);
-
   const handleChangePassword = async () => {
     setSettingsError(null);
     setSettingsNotice(null);
@@ -680,6 +666,20 @@ export default function SmartTrade() {
       return null;
     }
   };
+
+  useEffect(() => {
+    if (view !== "settings" || !session?.accessToken) return;
+    (async () => {
+      try {
+        const token = await getValidAccessToken();
+        const month = new Date().toISOString().slice(0, 7);
+        const rows = await supabaseRest(`usage_monthly?month=eq.${month}&select=count`, { accessToken: token });
+        setMonthlyUsageCount(rows?.[0]?.count ?? 0);
+      } catch (err) {
+        console.warn("Couldn't load usage count:", err);
+      }
+    })();
+  }, [view]);
 
   const [image, setImage] = useState(null);
   const [imageBase64, setImageBase64] = useState(null);

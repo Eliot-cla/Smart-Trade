@@ -613,6 +613,23 @@ export default function SmartTrade() {
     }
   };
 
+  // After signing in, a returning customer with an already-active plan
+  // should land straight in the app — only route to Pricing for people
+  // who genuinely don't have a plan yet (new signups, or anyone who
+  // never completed checkout).
+  const routeAfterAuth = async (accessToken) => {
+    try {
+      const rows = await supabaseRest("subscriptions?select=status&limit=1", { accessToken });
+      if (rows?.[0]?.status === "active") {
+        setView("app");
+        return;
+      }
+    } catch (err) {
+      console.warn("Couldn't check subscription status, defaulting to Pricing:", err);
+    }
+    setView("pricing");
+  };
+
   const handleAuth = async () => {
     setAuthError(null);
     setAuthNotice(null);
@@ -628,7 +645,7 @@ export default function SmartTrade() {
           const s = { accessToken: data.access_token, refreshToken: data.refresh_token, email: authEmail, userId: decodeJwtSub(data.access_token) };
           setSession(s);
           persistSession(s);
-          setView("pricing");
+          await routeAfterAuth(data.access_token);
         } else {
           // Email confirmation is likely required before a session is issued
           setAuthNotice("Account created — check your email to confirm it, then sign in below.");
@@ -639,7 +656,7 @@ export default function SmartTrade() {
         const s = { accessToken: data.access_token, refreshToken: data.refresh_token, email: authEmail, userId: decodeJwtSub(data.access_token) };
         setSession(s);
         persistSession(s);
-        setView("pricing");
+        await routeAfterAuth(data.access_token);
       }
     } catch (err) {
       console.error("Auth failed:", err);

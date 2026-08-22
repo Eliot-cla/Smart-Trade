@@ -68,6 +68,31 @@ function planFromPriceId(priceId) {
   return map[priceId] || "unknown";
 }
 
+// Falls back to looking up the account by Stripe customer id whenever a
+// subscription event doesn't carry our own metadata.user_id — this
+// happens for subscriptions changed through Stripe's own customer
+// portal (plan switches, etc.), which don't necessarily preserve
+// metadata we set at the original checkout. The customer_id ↔ user_id
+// link itself is always reliable, since it's recorded from
+// checkout.session.completed's client_reference_id on the very first
+// purchase.
+async function resolveUserId(customerId, metadataUserId) {
+  if (metadataUserId) return metadataUserId;
+  if (!customerId) return null;
+  try {
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/subscriptions?stripe_customer_id=eq.${customerId}&select=user_id&limit=1`,
+      { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
+    );
+    if (!res.ok) return null;
+    const rows = await res.json().catch(() => []);
+    return rows?.[0]?.user_id || null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.status(405).end();
@@ -115,7 +140,7 @@ export default async function handler(req, res) {
       case "customer.subscription.updated":
       case "customer.subscription.created": {
         const sub = event.data.object;
-        const userId = sub.metadata?.user_id;
+        const userId = await resolveUserId(sub.customer, sub.metadata?.user_id);
         if (userId) {
           const priceId = sub.items?.data?.[0]?.price?.id;
           await upsertSubscription({
@@ -127,12 +152,14 @@ export default async function handler(req, res) {
             current_period_end: sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
             updated_at: new Date().toISOString(),
           });
+        } else {
+          console.warn("subscription event with no resolvable user_id:", sub.id, sub.customer);
         }
         break;
       }
       case "customer.subscription.deleted": {
         const sub = event.data.object;
-        const userId = sub.metadata?.user_id;
+        const userId = await resolveUserId(sub.customer, sub.metadata?.user_id);
         if (userId) {
           await upsertSubscription({
             user_id: userId,

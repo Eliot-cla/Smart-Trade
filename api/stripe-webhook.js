@@ -101,10 +101,11 @@ export default async function handler(req, res) {
             user_id: userId,
             stripe_customer_id: session.customer,
             stripe_subscription_id: session.subscription || null,
-            // For one-time packs there's no ongoing subscription object —
-            // the customer.subscription.* events below fill in the plan
-            // name for real subscriptions once Stripe sends them.
-            plan: session.mode === "payment" ? "one_time_pack" : "pending",
+            // For one-time packs there's no ongoing subscription object,
+            // so we label the plan directly from the price ID we stashed
+            // in metadata at checkout — the customer.subscription.*
+            // events below handle real subscriptions instead.
+            plan: session.mode === "payment" ? planFromPriceId(session.metadata?.price_id) : "pending",
             status: "active",
             updated_at: new Date().toISOString(),
           });

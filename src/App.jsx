@@ -95,15 +95,26 @@ async function supabaseRest(path, { method = "GET", body, accessToken } = {}) {
   return res.json().catch(() => null);
 }
 
-// Protects the API budget while there's no real plan/billing distinction
-// yet — every account shares the same monthly cap for now. Calls the
-// increment_usage() Postgres function, which atomically bumps this
-// user's counter for the current month and returns the new total, so
-// there's no race condition between checking and incrementing.
-const MONTHLY_USAGE_LIMIT = 500;
+// Each paid plan has a different shape of limit:
+// - starter is a one-time pack — 20 analyses total, ever, not renewing
+//   monthly, so it's checked against the person's *lifetime* usage.
+// - growth is a monthly subscription — 75 analyses, resets each month.
+// - the unlimited plans really are unlimited from the person's point of
+//   view, but still get a generous safety cap to protect the API budget
+//   from a single runaway account.
+// - no active plan at all means no usage is allowed — Pricing is the
+//   next step, not a hidden free tier.
+const PLAN_LIMITS = {
+  starter: { type: "lifetime", limit: 20 },
+  growth: { type: "monthly", limit: 75 },
+  unlimited_monthly: { type: "monthly", limit: 500 },
+  unlimited_annual: { type: "monthly", limit: 500 },
+};
 
 async function checkAndIncrementUsage(accessToken) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_usage`, {
+  // Always record the attempt first (this month's bucket) — both the
+  // monthly-plan check and the lifetime sum for Starter read from it.
+  const incRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_usage`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -112,14 +123,59 @@ async function checkAndIncrementUsage(accessToken) {
     },
     body: "{}",
   });
-  if (!res.ok) {
+  if (!incRes.ok) {
     // If usage tracking itself fails, fail open rather than blocking
     // people from using the app over an infrastructure hiccup.
-    console.warn("Usage check failed, allowing request:", await res.text().catch(() => ""));
+    console.warn("Usage tracking failed, allowing request:", await incRes.text().catch(() => ""));
     return { allowed: true, count: null };
   }
-  const count = await res.json().catch(() => null);
-  return { allowed: count === null || count <= MONTHLY_USAGE_LIMIT, count };
+  const thisMonthCount = await incRes.json().catch(() => null);
+
+  let plan = null;
+  let status = null;
+  try {
+    const subRes = await fetch(`${SUPABASE_URL}/rest/v1/subscriptions?select=plan,status&limit=1`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${accessToken}` },
+    });
+    const rows = await subRes.json().catch(() => []);
+    plan = rows?.[0]?.plan || null;
+    status = rows?.[0]?.status || null;
+  } catch (err) {
+    console.warn("Couldn't check plan, blocking until it's confirmed:", err);
+  }
+
+  if (status !== "active" || !PLAN_LIMITS[plan]) {
+    return { allowed: false, count: thisMonthCount, reason: "no_active_plan" };
+  }
+
+  const { type, limit } = PLAN_LIMITS[plan];
+  if (type === "monthly") {
+    return { allowed: thisMonthCount === null || thisMonthCount <= limit, count: thisMonthCount, reason: "monthly_limit" };
+  }
+
+  // Lifetime (Starter pack): sum every month's count this account has
+  // ever recorded, since the pack doesn't renew on its own.
+  try {
+    const allRes = await fetch(`${SUPABASE_URL}/rest/v1/usage_monthly?select=count`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${accessToken}` },
+    });
+    const rows = await allRes.json().catch(() => []);
+    const lifetimeTotal = (rows || []).reduce((sum, r) => sum + (r.count || 0), 0);
+    return { allowed: lifetimeTotal <= limit, count: lifetimeTotal, reason: "lifetime_limit" };
+  } catch (err) {
+    console.warn("Couldn't compute lifetime usage, allowing request:", err);
+    return { allowed: true, count: thisMonthCount };
+  }
+}
+
+function usageDeniedMessage(usage) {
+  if (usage.reason === "lifetime_limit") {
+    return `You've used all 20 analyses in your Starter Pack. Grab another pack or move to a subscription for more.`;
+  }
+  if (usage.reason === "monthly_limit") {
+    return `You've reached this month's plan limit. It resets on the 1st, or you can upgrade for more.`;
+  }
+  return `You don't have an active plan yet — choose one to start analyzing.`;
 }
 
 // ---------- API layer ----------
@@ -711,20 +767,35 @@ export default function SmartTrade() {
   useEffect(() => {
     if (view !== "settings" || !session?.accessToken) return;
     (async () => {
-      try {
-        const token = await getValidAccessToken();
-        const month = new Date().toISOString().slice(0, 7);
-        const rows = await supabaseRest(`usage_monthly?month=eq.${month}&select=count`, { accessToken: token });
-        setMonthlyUsageCount(rows?.[0]?.count ?? 0);
-      } catch (err) {
-        console.warn("Couldn't load usage count:", err);
-      }
+      let plan = null;
       try {
         const token = await getValidAccessToken();
         const rows = await supabaseRest("subscriptions?select=plan,status", { accessToken: token });
-        setCurrentPlan(rows?.[0] || null);
+        const row = rows?.[0] || null;
+        setCurrentPlan(row);
+        plan = row?.status === "active" ? row.plan : null;
       } catch (err) {
         console.warn("Couldn't load subscription status:", err);
+      }
+
+      try {
+        const token = await getValidAccessToken();
+        const limits = PLAN_LIMITS[plan];
+        if (!limits) {
+          setMonthlyUsageCount(null);
+          return;
+        }
+        if (limits.type === "lifetime") {
+          const rows = await supabaseRest("usage_monthly?select=count", { accessToken: token });
+          const total = (rows || []).reduce((sum, r) => sum + (r.count || 0), 0);
+          setMonthlyUsageCount({ count: total, limit: limits.limit, label: "analyses used (Starter Pack)" });
+        } else {
+          const month = new Date().toISOString().slice(0, 7);
+          const rows = await supabaseRest(`usage_monthly?month=eq.${month}&select=count`, { accessToken: token });
+          setMonthlyUsageCount({ count: rows?.[0]?.count ?? 0, limit: limits.limit, label: "actions used this month" });
+        }
+      } catch (err) {
+        console.warn("Couldn't load usage count:", err);
       }
     })();
   }, [view]);
@@ -892,7 +963,7 @@ export default function SmartTrade() {
 
       const usage = await checkAndIncrementUsage(token);
       if (!usage.allowed) {
-        setNewsError(`You've reached this month's usage limit (${MONTHLY_USAGE_LIMIT}). It resets on the 1st.`);
+        setNewsError(usageDeniedMessage(usage));
         setNewsLoading(false);
         return;
       }
@@ -1226,7 +1297,7 @@ export default function SmartTrade() {
 
       const usage = await checkAndIncrementUsage(token);
       if (!usage.allowed) {
-        setError(`You've reached this month's analysis limit (${MONTHLY_USAGE_LIMIT}). It resets on the 1st.`);
+        setError(usageDeniedMessage(usage));
         setLoading(false);
         return;
       }
@@ -2280,7 +2351,7 @@ export default function SmartTrade() {
                     )}
                     {monthlyUsageCount !== null && (
                       <p className="mono" style={{ fontSize: 12, color: TEXT, margin: "0 0 12px" }}>
-                        <strong style={{ color: GOLD_BRIGHT }}>{monthlyUsageCount}</strong> / {MONTHLY_USAGE_LIMIT} actions used this month
+                        <strong style={{ color: GOLD_BRIGHT }}>{monthlyUsageCount.count}</strong> / {monthlyUsageCount.limit} {monthlyUsageCount.label}
                       </p>
                     )}
                     {portalError && (

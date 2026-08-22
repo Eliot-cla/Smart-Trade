@@ -67,6 +67,7 @@ export default async function handler(req, res) {
     client_reference_id: user.id,
     customer_email: user.email,
     "metadata[user_id]": user.id,
+    "metadata[price_id]": priceId,
   });
   if (mode === "subscription") {
     params.append("subscription_data[metadata][user_id]", user.id);

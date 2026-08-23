@@ -60,9 +60,9 @@ async function upsertSubscription(row) {
 // prices are ever archived/recreated (their IDs change every time).
 function planFromPriceId(priceId) {
   const map = {
-    price_1U7hIUAj5N9sH458epm9fMNv: "starter",
-    price_1U7hIUAj5N9sH458QQSy81r3: "growth",
-    price_1U7hIUAj5N9sH4585K2CCCFi: "unlimited_monthly",
+    price_1U7hIUAj5N9sH4585K2CCCFi: "starter",
+    price_1U7hIUAj5N9sH458epm9fMNv: "growth",
+    price_1U7hIUAj5N9sH458QQSy81r3: "unlimited_monthly",
     price_1U7hIUAj5N9sH458YO1n5T3s: "unlimited_annual",
   };
   return map[priceId] || "unknown";

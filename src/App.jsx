@@ -1495,10 +1495,10 @@ export default function SmartTrade() {
   // ---------- PRICING ----------
   if (view === "pricing") {
     const plans = [
-      { id: "pack", priceId: "price_1U7BZcAbZYjrqJ1RNDSVfcQz", name: "Starter Pack", price: "9.99 €", period: "one-time", tag: null, desc: "20 chart analyses, no expiry.", features: ["20 analyses", "Full structure breakdown", "Market context toggle"] },
-      { id: "pack2", priceId: "price_1U7BaXAbZYjrqJ1RMynVBwr8", name: "Growth Pack", price: "19.99 €", period: "/ month", tag: null, desc: "75 chart analyses every month.", features: ["75 analyses / month", "Full structure breakdown", "Market context toggle"] },
-      { id: "monthly", priceId: "price_1U7B6gAbZYjrqJ1RGTA2ms4g", name: "Unlimited Monthly", price: "39.99 €", period: "/ month", tag: "Most popular", desc: "Unlimited analyses, cancel anytime.", features: ["Unlimited analyses", "Full structure breakdown", "Market context toggle", "Priority processing"] },
-      { id: "annual", priceId: "price_1U7BABAbZYjrqJ1RfEsxrngR", name: "Unlimited Annual", price: "299.99 €", period: "/ year", tag: "Save €180", desc: "Same as monthly, billed once a year.", features: ["Unlimited analyses", "Full structure breakdown", "Market context toggle", "Priority processing"] },
+      { id: "pack", priceId: "price_1U7hIUAj5N9sH458epm9fMNv", name: "Starter Pack", price: "9.99 €", period: "one-time", tag: null, desc: "20 chart analyses, no expiry.", features: ["20 analyses", "Full structure breakdown", "Market context toggle"] },
+      { id: "pack2", priceId: "price_1U7hIUAj5N9sH458QQSy81r3", name: "Growth Pack", price: "19.99 €", period: "/ month", tag: null, desc: "75 chart analyses every month.", features: ["75 analyses / month", "Full structure breakdown", "Market context toggle"] },
+      { id: "monthly", priceId: "price_1U7hIUAj5N9sH4585K2CCCFi", name: "Unlimited Monthly", price: "39.99 €", period: "/ month", tag: "Most popular", desc: "Unlimited analyses, cancel anytime.", features: ["Unlimited analyses", "Full structure breakdown", "Market context toggle", "Priority processing"] },
+      { id: "annual", priceId: "price_1U7hIUAj5N9sH458YO1n5T3s", name: "Unlimited Annual", price: "299.99 €", period: "/ year", tag: "Save €180", desc: "Same as monthly, billed once a year.", features: ["Unlimited analyses", "Full structure breakdown", "Market context toggle", "Priority processing"] },
     ];
     const planIcon = { pack: Coins, pack2: Layers, monthly: Gauge, annual: Clock };
     return (

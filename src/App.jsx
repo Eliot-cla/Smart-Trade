@@ -2187,7 +2187,7 @@ export default function SmartTrade() {
                   ["8. Changes to the Service or these terms", "We may update the Service or these terms over time. Continued use after changes take effect means you accept the updated terms."],
                   ["9. Termination", "We may suspend or terminate accounts that violate these terms. You may stop using the Service and delete your account at any time via Settings."],
                   ["10. Governing law", "These terms are governed by Swiss law, without regard to conflict-of-law principles, unless local consumer protection law in your jurisdiction requires otherwise."],
-                  ["11. Contact", "Questions about these terms can be sent to the contact address provided on the Smart Trade website."],
+                  ["11. Contact", "Questions about these terms can be sent to contact@smart-trade.ch."],
                 ].map(([title, body], i) => (
                   <div key={i} style={{ marginBottom: 22 }}>
                     <div style={{ color: GOLD_BRIGHT, fontWeight: 600, marginBottom: 6 }}>{title}</div>
@@ -2232,7 +2232,7 @@ export default function SmartTrade() {
                   ["7. Cookies and local storage", "We use your browser's local storage to keep you signed in between visits. We don't use third-party advertising trackers."],
                   ["8. Security", "We use industry-standard practices (encrypted connections, hashed passwords, access-controlled databases) to protect your data, but no system is 100% secure — please use a strong, unique password."],
                   ["9. Changes to this policy", "We may update this policy as the Service evolves. Material changes will be reflected here with an updated date."],
-                  ["10. Contact", "Questions about this policy or requests regarding your data can be sent to the contact address provided on the Smart Trade website."],
+                  ["10. Contact", "Questions about this policy or requests regarding your data can be sent to contact@smart-trade.ch."],
                 ].map(([title, body], i) => (
                   <div key={i} style={{ marginBottom: 22 }}>
                     <div style={{ color: GOLD_BRIGHT, fontWeight: 600, marginBottom: 6 }}>{title}</div>

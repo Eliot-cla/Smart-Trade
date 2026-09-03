@@ -1571,10 +1571,6 @@ export default function SmartTrade() {
               );
             })}
           </div>
-
-          <button onClick={() => setView("app")} className="btn mono" style={{ width: "100%", padding: 10, background: "transparent", border: "none", color: MUTE, fontSize: 12.5, textDecoration: "underline", textUnderlineOffset: 3 }}>
-            Skip for now
-          </button>
         </div>
       </div>
     );

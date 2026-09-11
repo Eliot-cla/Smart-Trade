@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Upload, TrendingUp, TrendingDown, Minus, AlertTriangle, Loader2, X, ArrowRight, Target, ShieldAlert, Crosshair, Layers, Clock, Globe2, Grid3x3, Camera, Gauge, ShieldCheck, ChevronRight, Newspaper, Coins, LineChart, Landmark, MessageCircle, ArrowLeft, RefreshCw, Share2, Download, Settings, LogOut, Check, FileText } from "lucide-react";
+import { Analytics } from '@vercel/analytics/react';
 
 const GOLD = "#C9A648";
 const GOLD_BRIGHT = "#E8C973";
@@ -2767,6 +2768,7 @@ export default function SmartTrade() {
       </div>
         </div>
       </div>
+      <Analytics />
     </div>
   );
 }

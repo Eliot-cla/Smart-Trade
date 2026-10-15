@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Upload, TrendingUp, TrendingDown, Minus, AlertTriangle, Loader2, X, ArrowRight, Target, ShieldAlert, Crosshair, Layers, Clock, Globe2, Grid3x3, Camera, Gauge, ShieldCheck, ChevronRight, Newspaper, Coins, LineChart, Landmark, MessageCircle, ArrowLeft, RefreshCw, Share2, Download, Settings, LogOut, Check, FileText } from "lucide-react";
-import { Analytics } from '@vercel/analytics/react';
 
 const GOLD = "#C9A648";
 const GOLD_BRIGHT = "#E8C973";
@@ -485,6 +484,206 @@ function useStagedProgress(active, stages) {
 
 // ---------- App ----------
 
+// ---------- Landing helpers: scroll-reveal + glass illustrations ----------
+function Reveal({ children, delay = 0, style = {} }) {
+  const ref = useRef(null);
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") { setShown(true); return; }
+    const io = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setShown(true); io.disconnect(); } },
+      { threshold: 0.15 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return (
+    <div
+      ref={ref}
+      style={{
+        opacity: shown ? 1 : 0,
+        transform: shown ? "translateY(0)" : "translateY(26px)",
+        transition: `opacity .7s ease ${delay}s, transform .7s ease ${delay}s`,
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+const GLASS = {
+  background: "linear-gradient(145deg, rgba(201,166,72,0.10), rgba(17,16,19,0.85) 55%)",
+  border: `1px solid ${GOLD}38`,
+  borderRadius: 16,
+  boxShadow: `0 24px 60px -24px ${GOLD}33, inset 0 1px 0 ${GOLD}22`,
+};
+
+// ---------- Brand mark + wordmark (same three candlesticks as the favicon) ----------
+function MarkShapes() {
+  return (
+    <g>
+      <rect width="64" height="64" rx="14" fill="#08080A" stroke={GOLD} strokeOpacity=".45" strokeWidth="1.5" />
+      <rect x="14" y="34" width="7" height="14" rx="1.5" fill={GOLD} opacity="0.55" />
+      <line x1="17.5" y1="30" x2="17.5" y2="52" stroke={GOLD} strokeWidth="2" opacity="0.55" strokeLinecap="round" />
+      <rect x="28.5" y="24" width="7" height="20" rx="1.5" fill={GOLD_BRIGHT} opacity="0.8" />
+      <line x1="32" y1="18" x2="32" y2="48" stroke={GOLD_BRIGHT} strokeWidth="2" opacity="0.8" strokeLinecap="round" />
+      <rect x="43" y="14" width="7" height="24" rx="1.5" fill={GOLD_BRIGHT} />
+      <line x1="46.5" y1="9" x2="46.5" y2="42" stroke={GOLD_BRIGHT} strokeWidth="2.2" strokeLinecap="round" />
+    </g>
+  );
+}
+
+function Brand({ size = 30, center = false }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: size * 0.32, justifyContent: center ? "center" : "flex-start" }}>
+      <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true" style={{ flexShrink: 0 }}>
+        <MarkShapes />
+      </svg>
+      <span className="disp" style={{ fontSize: size * 0.82, fontWeight: 500, letterSpacing: -0.3, color: TEXT, lineHeight: 1 }}>
+        Smart <span style={{ color: GOLD_BRIGHT, fontStyle: "italic" }}>Trade</span>
+      </span>
+    </div>
+  );
+}
+
+// Deterministic candle series so the illustrations never "jump" between renders
+function makeCandles(n, seed, drift, x0, x1, yTop, yBot) {
+  let s = seed;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  let price = 0.5;
+  const raw = [];
+  for (let i = 0; i < n; i++) {
+    const o = price;
+    const c = Math.min(0.95, Math.max(0.05, o + (rnd() - 0.5) * 0.14 + drift));
+    const h = Math.max(o, c) + rnd() * 0.05;
+    const l = Math.min(o, c) - rnd() * 0.05;
+    raw.push({ o, c, h, l });
+    price = c;
+  }
+  const lo = Math.min(...raw.map((r) => r.l)), hi = Math.max(...raw.map((r) => r.h));
+  const y = (v) => yBot - ((v - lo) / (hi - lo)) * (yBot - yTop);
+  const step = (x1 - x0) / (n - 1);
+  return raw.map((r, i) => ({ x: x0 + i * step, o: y(r.o), c: y(r.c), h: y(r.h), l: y(r.l), up: r.c >= r.o }));
+}
+const CANDLES_A = makeCandles(26, 4242, 0.012, 30, 232, 54, 150);
+const CANDLES_B = makeCandles(14, 777, 0.014, 0, 1, 0, 1);
+
+function Candles({ data, w = 5 }) {
+  return data.map((k, i) => (
+    <g key={i}>
+      <line x1={k.x} x2={k.x} y1={k.h} y2={k.l} stroke={k.up ? GREEN : RED} strokeOpacity=".75" />
+      <rect x={k.x - w / 2} y={Math.min(k.o, k.c)} width={w} height={Math.max(2, Math.abs(k.o - k.c))} rx="1" fill={k.up ? GREEN : RED} />
+    </g>
+  ));
+}
+
+// Step 1 — a real-looking chart being captured
+function IllusShot() {
+  const ma = CANDLES_A.map((k) => `${k.x},${(k.o + k.c) / 2 + 8}`).join(" ");
+  return (
+    <svg viewBox="0 0 320 210" width="100%" style={{ maxWidth: 360, display: "block", margin: "0 auto" }} aria-hidden="true">
+      <rect x="12" y="12" width="296" height="186" rx="12" fill="#0C0B0A" stroke={GOLD} strokeOpacity=".3" />
+      <rect x="12" y="12" width="296" height="26" rx="12" fill="#14120F" />
+      <rect x="12" y="26" width="296" height="12" fill="#14120F" />
+      <circle cx="28" cy="25" r="3" fill={RED} fillOpacity=".7" /><circle cx="39" cy="25" r="3" fill={GOLD} fillOpacity=".7" /><circle cx="50" cy="25" r="3" fill={GREEN} fillOpacity=".7" />
+      <text x="70" y="28.5" fontSize="9.5" fill={TEXT} fontFamily="monospace" fontWeight="700">BTCUSDT</text>
+      <text x="118" y="28.5" fontSize="9" fill={MUTE} fontFamily="monospace">· 1H</text>
+      {[58, 82, 106, 130, 154].map((y) => <line key={y} x1="22" x2="248" y1={y} y2={y} stroke={LINE} />)}
+      {[["64,800", 58], ["64,400", 82], ["64,000", 106], ["63,600", 130], ["63,200", 154]].map(([t, y]) => (
+        <text key={t} x="254" y={y + 3} fontSize="8.5" fill={MUTE} fontFamily="monospace">{t}</text>
+      ))}
+      <polyline points={ma} fill="none" stroke={GOLD_BRIGHT} strokeOpacity=".8" strokeWidth="1.4" />
+      <Candles data={CANDLES_A} />
+      <line x1="22" x2="248" y1="92" y2="92" stroke={GOLD_BRIGHT} strokeOpacity=".6" strokeDasharray="3 3" />
+      <rect x="250" y="85" width="50" height="14" rx="3" fill={GOLD} /><text x="256" y="95" fontSize="8.5" fill="#08080A" fontFamily="monospace" fontWeight="700">64,212</text>
+      <line x1="150" x2="150" y1="40" y2="170" stroke={MUTE} strokeOpacity=".4" strokeDasharray="3 3" />
+      {/* capture brackets */}
+      {[[4, 4, 1, 1], [316, 4, -1, 1], [4, 206, 1, -1], [316, 206, -1, -1]].map(([x, y, dx, dy], i) => (
+        <path key={i} d={`M ${x} ${y + 24 * dy} L ${x} ${y} L ${x + 24 * dx} ${y}`} fill="none" stroke={GOLD_BRIGHT} strokeWidth="3" strokeLinecap="round" />
+      ))}
+      <rect x="226" y="172" width="74" height="20" rx="10" fill="#0C0B0A" stroke={GOLD_BRIGHT} strokeOpacity=".7" />
+      <circle cx="240" cy="182" r="4.5" fill={GOLD_BRIGHT} />
+      <text x="250" y="185.5" fontSize="9" fill={GOLD_BRIGHT} fontFamily="monospace" fontWeight="700">CAPTURE</text>
+    </svg>
+  );
+}
+
+// Step 2 — the Smart Trade app with the screenshot dropped in
+function IllusUpload() {
+  const thumb = CANDLES_B.map((k) => ({ ...k, x: 52 + k.x * 78, o: 66 + k.o * 30, c: 66 + k.c * 30, h: 62 + k.h * 36, l: 62 + k.l * 36 }));
+  return (
+    <svg viewBox="0 0 320 210" width="100%" style={{ maxWidth: 360, display: "block", margin: "0 auto" }} aria-hidden="true">
+      <rect x="12" y="12" width="296" height="186" rx="12" fill="#0C0B0A" stroke={GOLD} strokeOpacity=".3" />
+      {/* app header with logo */}
+      <rect x="12" y="12" width="296" height="38" rx="12" fill="#14120F" />
+      <rect x="12" y="34" width="296" height="16" fill="#14120F" />
+      <g transform="translate(24 20) scale(0.34)"><MarkShapes /></g>
+      <text x="52" y="36" fontSize="14" fill={TEXT} fontFamily="Fraunces, Georgia, serif" fontWeight="500">Smart <tspan fill={GOLD_BRIGHT} fontStyle="italic">Trade</tspan></text>
+      <rect x="236" y="23" width="62" height="16" rx="8" fill={GOLD} fillOpacity=".14" stroke={GOLD} strokeOpacity=".45" />
+      <text x="246" y="34" fontSize="8.5" fill={GOLD_BRIGHT} fontFamily="monospace" fontWeight="700">ANALYSIS</text>
+      {/* drop zone with the screenshot inside */}
+      <rect x="28" y="60" width="264" height="86" rx="10" fill="#100F0D" stroke={GOLD} strokeOpacity=".45" strokeDasharray="5 5" />
+      <rect x="40" y="68" width="100" height="70" rx="6" fill="#0A0908" stroke={LINE} />
+      <Candles data={thumb} w={4} />
+      <text x="156" y="88" fontSize="10.5" fill={TEXT} fontFamily="monospace" fontWeight="700">chart.png</text>
+      <text x="156" y="102" fontSize="9" fill={MUTE} fontFamily="monospace">BTCUSDT · 1H</text>
+      <circle cx="162" cy="120" r="7" fill={GREEN} fillOpacity=".18" stroke={GREEN} strokeOpacity=".6" />
+      <path d="M158.5 120 L161 122.5 L166 117" fill="none" stroke={GREEN} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <text x="174" y="123.5" fontSize="9" fill={GREEN} fontFamily="monospace">uploaded</text>
+      {/* analyze button + progress */}
+      <rect x="28" y="156" width="264" height="30" rx="15" fill={GOLD} />
+      <text x="124" y="175.5" fontSize="12" fill="#08080A" fontFamily="monospace" fontWeight="800">Analyze chart</text>
+      <circle cx="268" cy="171" r="9" fill="#08080A" />
+      <path d="M265 171 H271 M268.5 167.5 L272 171 L268.5 174.5" fill="none" stroke={GOLD_BRIGHT} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// Step 3 — the structured plan, branded
+function IllusPlan() {
+  const c = CANDLES_B.map((k) => ({ ...k, x: 30 + k.x * 170, o: 82 + k.o * 52, c: 82 + k.c * 52, h: 78 + k.h * 60, l: 78 + k.l * 60 }));
+  return (
+    <svg viewBox="0 0 320 230" width="100%" style={{ maxWidth: 360, display: "block", margin: "0 auto" }} aria-hidden="true">
+      <rect x="12" y="12" width="296" height="206" rx="12" fill="#0C0B0A" stroke={GOLD} strokeOpacity=".3" />
+      <rect x="12" y="12" width="296" height="38" rx="12" fill="#14120F" />
+      <rect x="12" y="34" width="296" height="16" fill="#14120F" />
+      <g transform="translate(24 20) scale(0.34)"><MarkShapes /></g>
+      <text x="52" y="36" fontSize="14" fill={TEXT} fontFamily="Fraunces, Georgia, serif" fontWeight="500">Smart <tspan fill={GOLD_BRIGHT} fontStyle="italic">Trade</tspan></text>
+      <rect x="236" y="23" width="62" height="16" rx="8" fill={GOLD} fillOpacity=".14" stroke={GOLD} strokeOpacity=".45" />
+      <text x="246" y="34" fontSize="8.5" fill={GOLD_BRIGHT} fontFamily="monospace" fontWeight="700">ANALYSIS</text>
+      {/* bias row */}
+      <circle cx="40" cy="68" r="11" fill={GREEN} fillOpacity=".15" stroke={GREEN} strokeOpacity=".55" />
+      <path d="M34.5 72 L39 67 L42 70 L46 64" fill="none" stroke={GREEN} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <text x="58" y="68" fontSize="14" fill={GREEN} fontFamily="Fraunces, Georgia, serif" fontWeight="600">LONG</text>
+      <text x="58" y="79" fontSize="8.5" fill={MUTE} fontFamily="monospace">BTC/USD · 1H</text>
+      <text x="214" y="72" fontSize="9" fill={MUTE} fontFamily="monospace">72% confidence</text>
+      {/* chart with levels */}
+      <rect x="24" y="88" width="190" height="86" rx="6" fill="#0A0908" stroke={LINE} />
+      <Candles data={c.map((k) => ({ ...k, o: k.o + 4, c: k.c + 4, h: k.h + 4, l: k.l + 4 }))} w={5} />
+      <line x1="24" x2="214" y1="100" y2="100" stroke={GREEN} strokeOpacity=".75" strokeDasharray="4 4" />
+      <line x1="24" x2="214" y1="130" y2="130" stroke={GOLD_BRIGHT} strokeWidth="1.4" />
+      <line x1="24" x2="214" y1="162" y2="162" stroke={RED} strokeOpacity=".75" strokeDasharray="4 4" />
+      {[[100, GREEN, "TP1", "65,900"], [130, GOLD_BRIGHT, "ENTRY", "64,000"], [162, RED, "SL", "62,900"]].map(([y, col, t, v]) => (
+        <g key={t}>
+          <rect x="222" y={y - 14} width="76" height="28" rx="6" fill="#0C0B0A" stroke={col} strokeOpacity=".6" />
+          <text x="230" y={y - 3} fontSize="8" fill={col} fontFamily="monospace" fontWeight="700">{t}</text>
+          <text x="230" y={y + 9} fontSize="10" fill={TEXT} fontFamily="monospace" fontWeight="700">{v}</text>
+        </g>
+      ))}
+      {/* structure chips */}
+      {[["Higher lows", 24, 74], ["Support held", 104, 78], ["Volume ↑", 188, 56]].map(([t, x, w]) => (
+        <g key={t}>
+          <rect x={x} y="186" width={w} height="18" rx="9" fill={GOLD} fillOpacity=".10" stroke={GOLD} strokeOpacity=".35" />
+          <text x={x + 9} y="198" fontSize="8.5" fill={GOLD_BRIGHT} fontFamily="monospace">{t}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 export default function SmartTrade() {
   // Only visible to you: open the site with ?dev=1 at the end of the URL
   // (e.g. https://your-site.vercel.app/?dev=1) to reveal the testing skip
@@ -648,23 +847,25 @@ export default function SmartTrade() {
 
   const [authNotice, setAuthNotice] = useState(null);
 
-  // Remember the session across page reloads via localStorage — a real
-  // deployed site, unlike the Claude artifact sandbox, supports this.
+  // Best-effort: remember the session across a reload of this artifact.
+  // Never blocks anything if it fails — same graceful pattern as history.
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("smarttrade_session");
-      if (raw) {
-        const saved = JSON.parse(raw);
-        if (saved?.accessToken) setSession(saved);
+    (async () => {
+      try {
+        const raw = localStorage.getItem("session");
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (saved?.accessToken) setSession(saved);
+        }
+      } catch {
+        // no saved session, or storage unavailable — just start logged out
       }
-    } catch {
-      // no saved session — just start logged out
-    }
+    })();
   }, []);
 
-  const persistSession = (s) => {
+  const persistSession = async (s) => {
     try {
-      localStorage.setItem("smarttrade_session", JSON.stringify(s));
+      localStorage.setItem("session", JSON.stringify(s));
     } catch {
       // non-blocking — worst case the person has to log in again next time
     }
@@ -731,7 +932,7 @@ export default function SmartTrade() {
 
   const logOut = () => {
     setSession(null);
-    try { localStorage.removeItem("smarttrade_session"); } catch {}
+    try { localStorage.removeItem("session"); } catch {}
     setView("welcome");
   };
 
@@ -1398,6 +1599,8 @@ export default function SmartTrade() {
         width: 100%; text-align: left; transition: background .15s ease, color .15s ease;
       }
       .sidebar-link:hover { background: ${PANEL}; color: ${TEXT}; }
+      .brand-mobile { display: block; }
+      @media (min-width: 900px) { .brand-mobile { display: none; } }
       .sidebar-link.active { background: ${GOLD}14; border-color: ${GOLD}33; color: ${GOLD_BRIGHT}; font-weight: 600; }
     `}</style>
   );
@@ -1415,9 +1618,8 @@ export default function SmartTrade() {
     ];
     return (
       <div className="sidebar">
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 32, padding: "0 12px" }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: GOLD }} />
-          <span className="mono" style={{ fontSize: 12, letterSpacing: 2, color: GOLD, fontWeight: 700, textTransform: "uppercase" }}>Smart Trade</span>
+        <div style={{ marginBottom: 32, padding: "0 12px" }}>
+          <Brand size={34} />
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {items.map((it) => (
@@ -1466,9 +1668,8 @@ export default function SmartTrade() {
         </div>
 
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "40px 24px", textAlign: "center", position: "relative" }}>
-          <div className="fade" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 22 }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: GOLD }} />
-            <span className="mono" style={{ fontSize: 11, letterSpacing: 3, color: GOLD, textTransform: "uppercase" }}>Welcome</span>
+          <div className="fade" style={{ display: "flex", justifyContent: "center", marginBottom: 26 }}>
+            <svg viewBox="0 0 64 64" width="84" height="84" aria-hidden="true" style={{ filter: `drop-shadow(0 10px 30px ${GOLD}55)` }}><MarkShapes /></svg>
           </div>
           <h1 className="disp fade" style={{ fontSize: 56, fontWeight: 480, margin: "0 0 18px", letterSpacing: -1, lineHeight: 1.02, animationDelay: ".05s" }}>
             Smart <span style={{ color: GOLD_BRIGHT, fontStyle: "italic" }}>Trade</span>
@@ -1507,6 +1708,7 @@ export default function SmartTrade() {
         {sharedStyles}
         <div style={{ position: "absolute", top: -80, left: "50%", transform: "translateX(-50%)", width: 500, height: 400, background: `radial-gradient(circle, ${GOLD}18, transparent 70%)`, pointerEvents: "none" }} />
         <div style={{ maxWidth: 620, margin: "0 auto", padding: "48px 20px 60px", position: "relative" }}>
+          <div style={{ marginBottom: 26 }}><Brand size={40} /></div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: GOLD }} />
             <span className="mono" style={{ fontSize: 11, letterSpacing: 3, color: GOLD, textTransform: "uppercase" }}>Plans</span>
@@ -1586,24 +1788,88 @@ export default function SmartTrade() {
       { Icon: ShieldCheck, title: "Honest by design", text: "Every read is a pattern-based hypothesis, never a certainty or an order to trade." },
       { Icon: Newspaper, title: "Daily market pulse", text: "A short daily digest of what's moving crypto, equities and macro — even on days you don't upload a chart." },
     ];
+    const steps = [
+      { n: "01", title: "Screenshot a chart", text: "Open any chart on TradingView and capture it — any asset, any timeframe.", Illus: IllusShot },
+      { n: "02", title: "Drop it in", text: "Upload the image. No indicators to set up, no settings to tweak.", Illus: IllusUpload },
+      { n: "03", title: "Get a structured read", text: "Bias, indicative entry / TP / SL and the structure behind them — explained, never promised.", Illus: IllusPlan },
+    ];
+    const dotGrid = {
+      position: "absolute", inset: 0, pointerEvents: "none",
+      backgroundImage: `radial-gradient(${GOLD}26 1px, transparent 1px)`, backgroundSize: "28px 28px",
+      WebkitMaskImage: "linear-gradient(180deg, #000 0%, transparent 85%)", maskImage: "linear-gradient(180deg, #000 0%, transparent 85%)",
+    };
     return (
-      <div style={{ minHeight: "100vh", background: INK, color: TEXT, fontFamily: "'Inter', sans-serif" }}>
+      <div style={{ minHeight: "100vh", background: INK, color: TEXT, fontFamily: "'Inter', sans-serif", position: "relative", overflow: "hidden" }}>
         {sharedStyles}
-        <div style={{ maxWidth: 620, margin: "0 auto", padding: "64px 20px 90px" }}>
-          <div className="fade" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: GOLD }} />
-            <span className="mono" style={{ fontSize: 11, letterSpacing: 3, color: GOLD, textTransform: "uppercase" }}>Smart Trade</span>
-          </div>
+        <style>{`@keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(6px); } }`}</style>
+        <div style={dotGrid} />
+        <div style={{ position: "absolute", top: -120, left: "50%", transform: "translateX(-50%)", width: 640, height: 480, background: `radial-gradient(circle, ${GOLD}26, transparent 70%)`, pointerEvents: "none" }} />
 
-          <h1 className="disp fade" style={{ fontSize: 44, fontWeight: 480, margin: "0 0 16px", letterSpacing: -0.5, lineHeight: 1.06, animationDelay: ".05s" }}>
-            Read your chart<br />before you enter.
-          </h1>
-          <p className="mono fade" style={{ color: MUTE, fontSize: 15.5, lineHeight: 1.7, maxWidth: 480, margin: "0 0 28px", animationDelay: ".1s" }}>
-            Smart Trade turns a TradingView screenshot into a clear, structured technical read — direction, indicative entry/TP/SL, market structure, and (optionally) live macro context. Built for traders who want a second pair of eyes, not a black box telling them what to do.
-          </p>
+        <div style={{ maxWidth: 620, margin: "0 auto", padding: "0 20px 90px", position: "relative" }}>
+          {/* ---------- HERO ---------- */}
+          <section style={{ minHeight: "92vh", display: "flex", flexDirection: "column", justifyContent: "center", paddingTop: 40 }}>
+            <div className="fade" style={{ marginBottom: 28 }}>
+              <Brand size={46} />
+            </div>
 
-          {/* Example preview — shows the actual output shape instead of just describing it */}
-          <div className="fade" style={{ marginBottom: 32, animationDelay: ".12s" }}>
+            <h1 className="disp fade" style={{ fontSize: 46, fontWeight: 480, margin: "0 0 16px", letterSpacing: -0.5, lineHeight: 1.06, animationDelay: ".05s" }}>
+              Read your chart<br /><span style={{ color: GOLD_BRIGHT, fontStyle: "italic" }}>before you enter.</span>
+            </h1>
+            <p className="mono fade" style={{ color: MUTE, fontSize: 15.5, lineHeight: 1.7, maxWidth: 480, margin: "0 0 28px", animationDelay: ".1s" }}>
+              Drop a TradingView screenshot and get a clear, structured technical read in seconds — a second pair of eyes, not a black box telling you what to do.
+            </p>
+
+            <button
+              onClick={() => setView("auth")}
+              className="btn mono fade"
+              style={{
+                width: "100%", padding: "16px 20px", background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})`,
+                color: INK, border: "none", borderRadius: 999, fontSize: 14.5, fontWeight: 700, letterSpacing: 0.4,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 10, animationDelay: ".15s",
+                boxShadow: `0 10px 40px -10px ${GOLD}88`,
+              }}
+            >
+              Create account
+              <span style={{ width: 26, height: 26, borderRadius: "50%", background: INK, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <ChevronRight size={15} color={GOLD_BRIGHT} />
+              </span>
+            </button>
+            <button
+              onClick={() => { setAuthMode("signin"); setView("auth"); }}
+              className="btn mono"
+              style={{ width: "100%", padding: 10, marginTop: 8, background: "transparent", border: "none", color: MUTE, fontSize: 12.5, textAlign: "center" }}
+            >
+              Already have an account? <span style={{ color: GOLD_BRIGHT, textDecoration: "underline" }}>Log in</span>
+            </button>
+
+            <div className="mono" style={{ marginTop: 44, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, color: "#5A564E", fontSize: 10.5, letterSpacing: 2, textTransform: "uppercase" }}>
+              Scroll to see how it works
+              <ChevronRight size={16} color={GOLD} style={{ transform: "rotate(90deg)", animation: "bob 1.8s ease-in-out infinite" }} />
+            </div>
+          </section>
+
+          {/* ---------- HOW IT WORKS ---------- */}
+          <section style={{ paddingTop: 40 }}>
+            <Reveal>
+              <h2 className="disp" style={{ fontSize: 38, fontWeight: 480, textAlign: "center", margin: "0 0 56px", letterSpacing: -0.4 }}>
+                How it <span style={{ color: GOLD_BRIGHT, fontStyle: "italic" }}>works</span>
+              </h2>
+            </Reveal>
+
+            {steps.map((s, i) => (
+              <Reveal key={s.n} style={{ marginBottom: 64 }}>
+                <div className="mono" style={{ fontSize: 13, letterSpacing: 3, color: GOLD, fontWeight: 700, marginBottom: 8 }}>{s.n}</div>
+                <h3 className="disp" style={{ fontSize: 30, fontWeight: 480, margin: "0 0 10px", letterSpacing: -0.3, lineHeight: 1.1 }}>{s.title}</h3>
+                <p className="mono" style={{ fontSize: 13.5, color: MUTE, lineHeight: 1.65, margin: "0 0 22px", maxWidth: 440 }}>{s.text}</p>
+                <div style={{ ...GLASS, padding: "22px 14px" }}>
+                  <s.Illus />
+                </div>
+              </Reveal>
+            ))}
+          </section>
+
+          {/* ---------- EXAMPLE READ ---------- */}
+          <Reveal style={{ marginBottom: 40 }}>
             <div className="mono" style={{ fontSize: 10.5, letterSpacing: 1.5, color: "#5A564E", marginBottom: 8, textTransform: "uppercase" }}>Example read</div>
             <div style={{ background: `linear-gradient(180deg, ${GREEN}12, transparent)`, border: `1px solid ${GREEN}3D`, borderRadius: 10, padding: 18 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
@@ -1636,45 +1902,52 @@ export default function SmartTrade() {
             <p className="mono" style={{ fontSize: 10.5, color: "#5A564E", marginTop: 8, lineHeight: 1.5 }}>
               Illustrative example — not a live signal.
             </p>
-          </div>
+          </Reveal>
 
-          <div className="fade" style={{ display: "grid", gap: 12, marginBottom: 36, animationDelay: ".15s" }}>
+          {/* ---------- FEATURES ---------- */}
+          <div style={{ display: "grid", gap: 12, marginBottom: 40 }}>
             {features.map((f, i) => (
-              <div key={i} style={{ display: "flex", gap: 14, background: PANEL, border: `1px solid ${LINE}`, borderRadius: 8, padding: "16px 18px" }}>
-                <div style={{ width: 36, height: 36, borderRadius: "50%", background: GOLD + "14", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <f.Icon size={16} color={GOLD} />
+              <Reveal key={i} delay={i * 0.06}>
+                <div style={{ display: "flex", gap: 14, background: PANEL, border: `1px solid ${LINE}`, borderRadius: 8, padding: "16px 18px" }}>
+                  <div style={{ width: 36, height: 36, borderRadius: "50%", background: GOLD + "14", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <f.Icon size={16} color={GOLD} />
+                  </div>
+                  <div>
+                    <div className="mono" style={{ fontSize: 13.5, fontWeight: 600, color: TEXT, marginBottom: 3 }}>{f.title}</div>
+                    <div className="mono" style={{ fontSize: 12.5, color: MUTE, lineHeight: 1.55 }}>{f.text}</div>
+                  </div>
                 </div>
-                <div>
-                  <div className="mono" style={{ fontSize: 13.5, fontWeight: 600, color: TEXT, marginBottom: 3 }}>{f.title}</div>
-                  <div className="mono" style={{ fontSize: 12.5, color: MUTE, lineHeight: 1.55 }}>{f.text}</div>
-                </div>
-              </div>
+              </Reveal>
             ))}
           </div>
 
-          <button
-            onClick={() => setView("auth")}
-            className="btn mono fade"
-            style={{
-              width: "100%", padding: "16px 20px", background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})`,
-              color: INK, border: "none", borderRadius: 6, fontSize: 14.5, fontWeight: 700, letterSpacing: 0.4,
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8, animationDelay: ".2s",
-            }}
-          >
-            Create account <ChevronRight size={16} />
-          </button>
-
-          <button
-            onClick={() => { setAuthMode("signin"); setView("auth"); }}
-            className="btn mono"
-            style={{ width: "100%", padding: 10, marginTop: 8, background: "transparent", border: "none", color: MUTE, fontSize: 12.5, textAlign: "center" }}
-          >
-            Already have an account? <span style={{ color: GOLD_BRIGHT, textDecoration: "underline" }}>Log in</span>
-          </button>
-
-          <p className="mono" style={{ fontSize: 11, color: "#5A564E", marginTop: 8, lineHeight: 1.6, textAlign: "center" }}>
-            Educational chart-reading tool. Not financial advice, not a signal to trade.
-          </p>
+          {/* ---------- FINAL CTA ---------- */}
+          <Reveal>
+            <button
+              onClick={() => setView("auth")}
+              className="btn mono"
+              style={{
+                width: "100%", padding: "16px 20px", background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})`,
+                color: INK, border: "none", borderRadius: 999, fontSize: 14.5, fontWeight: 700, letterSpacing: 0.4,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 10, boxShadow: `0 10px 40px -10px ${GOLD}88`,
+              }}
+            >
+              Create account
+              <span style={{ width: 26, height: 26, borderRadius: "50%", background: INK, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <ChevronRight size={15} color={GOLD_BRIGHT} />
+              </span>
+            </button>
+            <button
+              onClick={() => { setAuthMode("signin"); setView("auth"); }}
+              className="btn mono"
+              style={{ width: "100%", padding: 10, marginTop: 8, background: "transparent", border: "none", color: MUTE, fontSize: 12.5, textAlign: "center" }}
+            >
+              Already have an account? <span style={{ color: GOLD_BRIGHT, textDecoration: "underline" }}>Log in</span>
+            </button>
+            <p className="mono" style={{ fontSize: 11, color: "#5A564E", marginTop: 8, lineHeight: 1.6, textAlign: "center" }}>
+              Educational chart-reading tool. Not financial advice, not a signal to trade.
+            </p>
+          </Reveal>
         </div>
       </div>
     );
@@ -1692,6 +1965,7 @@ export default function SmartTrade() {
           {renderSidebar("news")}
           <div className="main-content">
         <div className="news-container" style={{ margin: "0 auto", padding: "48px 20px 90px", position: "relative" }}>
+          <div className="brand-mobile" style={{ marginBottom: 18 }}><Brand size={34} /></div>
           <button onClick={() => setView("app")} className="btn mono" style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: MUTE, fontSize: 12.5, padding: 0, marginBottom: 22 }}>
             <ArrowLeft size={14} /> Back
           </button>
@@ -1794,6 +2068,7 @@ export default function SmartTrade() {
           {renderSidebar("history")}
           <div className="main-content">
         <div className="news-container" style={{ margin: "0 auto", padding: "48px 20px 90px", position: "relative" }}>
+          <div className="brand-mobile" style={{ marginBottom: 18 }}><Brand size={34} /></div>
           <button onClick={() => setView("app")} className="btn mono" style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: MUTE, fontSize: 12.5, padding: 0, marginBottom: 22 }}>
             <ArrowLeft size={14} /> Back
           </button>
@@ -1929,6 +2204,7 @@ export default function SmartTrade() {
         <div style={{ position: "absolute", top: "20%", left: "50%", transform: "translate(-50%, -50%)", width: 500, height: 500, background: `radial-gradient(circle, ${GOLD}18, transparent 70%)`, pointerEvents: "none" }} />
 
         <div style={{ maxWidth: 420, margin: "0 auto", padding: "40px 24px", position: "relative", width: "100%" }}>
+          <div style={{ marginBottom: 26 }}><Brand size={40} /></div>
           <button onClick={() => setView("landing")} className="btn mono" style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: MUTE, fontSize: 12.5, padding: 0, marginBottom: 26 }}>
             <ArrowLeft size={14} /> Back
           </button>
@@ -2162,6 +2438,7 @@ export default function SmartTrade() {
           {renderSidebar("terms")}
           <div className="main-content">
             <div style={{ maxWidth: 680, margin: "0 auto", padding: "48px 20px 90px" }}>
+              <div className="brand-mobile" style={{ marginBottom: 18 }}><Brand size={34} /></div>
               <button onClick={() => setView("app")} className="btn mono" style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: MUTE, fontSize: 12.5, padding: 0, marginBottom: 22 }}>
                 <ArrowLeft size={14} /> Back
               </button>
@@ -2208,6 +2485,7 @@ export default function SmartTrade() {
           {renderSidebar("privacy")}
           <div className="main-content">
             <div style={{ maxWidth: 680, margin: "0 auto", padding: "48px 20px 90px" }}>
+              <div className="brand-mobile" style={{ marginBottom: 18 }}><Brand size={34} /></div>
               <button onClick={() => setView("app")} className="btn mono" style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: MUTE, fontSize: 12.5, padding: 0, marginBottom: 22 }}>
                 <ArrowLeft size={14} /> Back
               </button>
@@ -2254,6 +2532,7 @@ export default function SmartTrade() {
           {renderSidebar("settings")}
           <div className="main-content">
             <div style={{ maxWidth: 480, margin: "0 auto", padding: "48px 20px 90px", position: "relative" }}>
+              <div className="brand-mobile" style={{ marginBottom: 18 }}><Brand size={34} /></div>
               <button onClick={() => setView("app")} className="btn mono" style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: MUTE, fontSize: 12.5, padding: 0, marginBottom: 22 }}>
                 <ArrowLeft size={14} /> Back
               </button>
@@ -2390,10 +2669,7 @@ export default function SmartTrade() {
         <div className="main-content">
       <div className={result ? "news-container" : ""} style={{ maxWidth: result ? undefined : 620, margin: "0 auto", padding: "48px 20px 90px", position: "relative" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: GOLD }} />
-            <span className="mono" style={{ fontSize: 11, letterSpacing: 3, color: GOLD, textTransform: "uppercase" }}>Smart Trade</span>
-          </div>
+          <Brand size={38} />
           {session && (
             <button onClick={logOut} className="btn mono" style={{ background: "transparent", border: "none", color: "#5A564E", fontSize: 11, padding: 0 }}>
               {session.email} · Log out
@@ -2768,7 +3044,6 @@ export default function SmartTrade() {
       </div>
         </div>
       </div>
-      <Analytics />
     </div>
   );
 }

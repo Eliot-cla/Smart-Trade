@@ -684,6 +684,50 @@ function IllusPlan() {
   );
 }
 
+// ---------- FAQ accordion item ----------
+function FaqItem({ q, a }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ background: PANEL, border: `1px solid ${open ? GOLD + "55" : LINE}`, borderRadius: 10, overflow: "hidden", transition: "border-color .2s ease" }}>
+      <button
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="btn mono"
+        style={{ width: "100%", textAlign: "left", background: "transparent", border: "none", color: TEXT, padding: "16px 18px", fontSize: 13.5, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}
+      >
+        {q}
+        <ChevronRight size={16} color={GOLD} style={{ flexShrink: 0, transform: open ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .2s ease" }} />
+      </button>
+      <div style={{ maxHeight: open ? 400 : 0, transition: "max-height .3s ease", overflow: "hidden" }}>
+        <p className="mono" style={{ margin: 0, padding: "0 18px 16px", fontSize: 12.5, color: MUTE, lineHeight: 1.65 }}>{a}</p>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Star rating (supports halves) ----------
+function StarRating({ value = 4.5, size = 20 }) {
+  const path = "M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3 6.1 20.6l1.3-6.6L2.5 9.4l6.6-.8z";
+  return (
+    <div style={{ display: "inline-flex", gap: 3 }} aria-label={`${value} out of 5`}>
+      {[0, 1, 2, 3, 4].map((i) => {
+        const fill = Math.max(0, Math.min(1, value - i));
+        return (
+          <svg key={i} viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+            <defs>
+              <linearGradient id={`sr${i}`}>
+                <stop offset={`${fill * 100}%`} stopColor={GOLD_BRIGHT} />
+                <stop offset={`${fill * 100}%`} stopColor={LINE} />
+              </linearGradient>
+            </defs>
+            <path d={path} fill={`url(#sr${i})`} stroke={GOLD} strokeOpacity=".5" strokeWidth="1" strokeLinejoin="round" />
+          </svg>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function SmartTrade() {
   // Only visible to you: open the site with ?dev=1 at the end of the URL
   // (e.g. https://your-site.vercel.app/?dev=1) to reveal the testing skip
@@ -742,6 +786,8 @@ export default function SmartTrade() {
   const [view, setView] = useState("welcome"); // 'welcome' | 'pricing' | 'landing' | 'app' | 'news' | 'auth'
   const [session, setSession] = useState(null); // { accessToken, email } | null
   const [authMode, setAuthMode] = useState("signup"); // 'signup' | 'signin'
+  const [quizStep, setQuizStep] = useState(0); // 0..2 = questions, 3 = result
+  const [quizAnswers, setQuizAnswers] = useState([null, null, null]);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
@@ -1820,7 +1866,7 @@ export default function SmartTrade() {
             </p>
 
             <button
-              onClick={() => setView("auth")}
+              onClick={() => { setQuizStep(0); setQuizAnswers([null, null, null]); setView("quiz"); }}
               className="btn mono fade"
               style={{
                 width: "100%", padding: "16px 20px", background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})`,
@@ -1829,7 +1875,7 @@ export default function SmartTrade() {
                 boxShadow: `0 10px 40px -10px ${GOLD}88`,
               }}
             >
-              Create account
+              Find my setup
               <span style={{ width: 26, height: 26, borderRadius: "50%", background: INK, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <ChevronRight size={15} color={GOLD_BRIGHT} />
               </span>
@@ -1867,6 +1913,24 @@ export default function SmartTrade() {
               </Reveal>
             ))}
           </section>
+
+          {/* ---------- PROOF STRIP (real figures — update as they change) ---------- */}
+          <Reveal style={{ marginBottom: 56 }}>
+            <div style={{ ...GLASS, padding: "22px 18px", display: "flex", flexWrap: "wrap", justifyContent: "space-around", alignItems: "center", gap: 22, textAlign: "center" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 6 }}>
+                  <span className="disp" style={{ fontSize: 34, fontWeight: 500, color: GOLD_BRIGHT, lineHeight: 1 }}>4.5<span style={{ fontSize: 18, color: MUTE }}>/5</span></span>
+                </div>
+                <StarRating value={4.5} size={18} />
+                <div className="mono" style={{ fontSize: 11, color: MUTE, marginTop: 8 }}>Rated by Smart Trade users<br />(about 50 ratings)</div>
+              </div>
+              <div style={{ width: 1, alignSelf: "stretch", background: LINE }} />
+              <div>
+                <div className="disp" style={{ fontSize: 34, fontWeight: 500, color: GOLD_BRIGHT, lineHeight: 1, marginBottom: 6 }}>200+</div>
+                <div className="mono" style={{ fontSize: 11, color: MUTE, marginTop: 8 }}>traders have joined<br />Smart Trade</div>
+              </div>
+            </div>
+          </Reveal>
 
           {/* ---------- EXAMPLE READ ---------- */}
           <Reveal style={{ marginBottom: 40 }}>
@@ -1921,10 +1985,28 @@ export default function SmartTrade() {
             ))}
           </div>
 
+          {/* ---------- FAQ ---------- */}
+          <Reveal style={{ marginBottom: 44 }}>
+            <h2 className="disp" style={{ fontSize: 32, fontWeight: 480, margin: "0 0 20px", letterSpacing: -0.3 }}>
+              Questions, <span style={{ color: GOLD_BRIGHT, fontStyle: "italic" }}>answered</span>
+            </h2>
+            <div style={{ display: "grid", gap: 10 }}>
+              {[
+                ["Is Smart Trade a trading signal?", "No. It's an educational chart-reading tool. Each read is a pattern-based hypothesis with indicative levels, never a certainty or an order to trade. Decisions and risk stay yours."],
+                ["What do I need to use it?", "A screenshot of a chart, from TradingView or any other charting platform. Upload it and you get a structured read in seconds."],
+                ["Which markets does it work on?", "Crypto, forex, stocks and indices. As long as the chart is clear and readable, it can analyze it."],
+                ["What do I get in a read?", "A directional bias, an indicative entry zone, take-profit and stop-loss levels, and the market structure behind them, explained in plain language."],
+                ["How accurate is it?", "No tool can predict the market. That's why the Track Record page lets you log how each read played out, so you can judge it with your own data."],
+                ["What happens to my screenshots and data?", "Your screenshot is sent for analysis when you upload it, and your track record is saved to your account. See the Privacy page for the details."],
+                ["How do the plans work?", "Choose a one-time pack or a monthly or yearly plan. You can manage or cancel a subscription anytime from Settings."],
+              ].map(([q, a]) => <FaqItem key={q} q={q} a={a} />)}
+            </div>
+          </Reveal>
+
           {/* ---------- FINAL CTA ---------- */}
           <Reveal>
             <button
-              onClick={() => setView("auth")}
+              onClick={() => { setQuizStep(0); setQuizAnswers([null, null, null]); setView("quiz"); }}
               className="btn mono"
               style={{
                 width: "100%", padding: "16px 20px", background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})`,
@@ -1932,7 +2014,7 @@ export default function SmartTrade() {
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 10, boxShadow: `0 10px 40px -10px ${GOLD}88`,
               }}
             >
-              Create account
+              Find my setup
               <span style={{ width: 26, height: 26, borderRadius: "50%", background: INK, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <ChevronRight size={15} color={GOLD_BRIGHT} />
               </span>
@@ -1948,6 +2030,124 @@ export default function SmartTrade() {
               Educational chart-reading tool. Not financial advice, not a signal to trade.
             </p>
           </Reveal>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------- QUIZ (3 quick questions between landing and signup) ----------
+  if (view === "quiz") {
+    const questions = [
+      { q: "How would you describe your trading level?", opts: ["Just starting out", "I trade, but I'm still learning", "Experienced"] },
+      { q: "What do you mostly trade?", opts: ["Crypto", "Forex", "Stocks & indices", "A bit of everything"] },
+      { q: "What's hardest for you right now?", opts: ["Knowing where to enter", "Placing my stop-loss", "Reading the market structure", "Staying objective"] },
+    ];
+    const outcomes = [
+      "A clear indicative entry zone, with the levels and reasoning behind it, so you're not guessing.",
+      "A suggested stop-loss area tied to real structure, so your risk is defined before you act.",
+      "Support, resistance and breaks of structure named and explained in plain language.",
+      "A calm, structured second opinion on every chart, so you can compare it with your own read.",
+    ];
+    const assetLabel = ["crypto", "forex", "stocks & indices", "your markets"];
+    const levelLine = ["Built to be easy to follow, even if you're new.", "A good fit for checking your own reads as you learn.", "A fast second pair of eyes on your setups."];
+    const done = quizStep >= 3;
+    const choose = (i) => {
+      const next = [...quizAnswers]; next[quizStep] = i; setQuizAnswers(next);
+      setTimeout(() => setQuizStep((n) => n + 1), 180);
+    };
+    const goSignup = () => { setAuthMode("signup"); setView("auth"); };
+    return (
+      <div style={{ minHeight: "100vh", background: INK, color: TEXT, fontFamily: "'Inter', sans-serif", position: "relative", overflow: "hidden" }}>
+        {sharedStyles}
+        <div style={{ position: "absolute", top: -100, left: "50%", transform: "translateX(-50%)", width: 560, height: 420, background: `radial-gradient(circle, ${GOLD}1F, transparent 70%)`, pointerEvents: "none" }} />
+        <div style={{ maxWidth: 520, margin: "0 auto", padding: "40px 20px 70px", position: "relative", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+          <div style={{ marginBottom: 28 }}><Brand size={38} /></div>
+
+          <button
+            onClick={() => (quizStep > 0 && !done ? setQuizStep(quizStep - 1) : setView("landing"))}
+            className="btn mono"
+            style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: MUTE, fontSize: 12.5, padding: 0, marginBottom: 22, alignSelf: "flex-start" }}
+          >
+            <ArrowLeft size={14} /> Back
+          </button>
+
+          {/* progress */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 26 }}>
+            {[0, 1, 2].map((i) => (
+              <div key={i} style={{ flex: 1, height: 3, borderRadius: 3, background: i < Math.min(quizStep + (done ? 0 : 1), 3) ? GOLD : LINE, transition: "background .3s ease" }} />
+            ))}
+          </div>
+
+          {!done ? (
+            <div key={quizStep} className="fade">
+              <div className="mono" style={{ fontSize: 11, letterSpacing: 3, color: GOLD, textTransform: "uppercase", marginBottom: 10 }}>
+                Question {quizStep + 1} of 3
+              </div>
+              <h1 className="disp" style={{ fontSize: 31, fontWeight: 480, margin: "0 0 24px", letterSpacing: -0.3, lineHeight: 1.12 }}>
+                {questions[quizStep].q}
+              </h1>
+              <div style={{ display: "grid", gap: 10 }}>
+                {questions[quizStep].opts.map((o, i) => {
+                  const sel = quizAnswers[quizStep] === i;
+                  return (
+                    <button
+                      key={o}
+                      onClick={() => choose(i)}
+                      className="btn mono"
+                      style={{
+                        textAlign: "left", padding: "16px 18px", borderRadius: 10, fontSize: 14,
+                        background: sel ? GOLD + "1A" : PANEL, border: `1px solid ${sel ? GOLD : LINE}`, color: sel ? GOLD_BRIGHT : TEXT,
+                        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, transition: "all .15s ease",
+                      }}
+                    >
+                      {o}
+                      {sel && <Check size={16} color={GOLD_BRIGHT} />}
+                    </button>
+                  );
+                })}
+              </div>
+              <button onClick={() => setQuizStep(quizStep + 1)} className="btn mono" style={{ background: "transparent", border: "none", color: "#5A564E", fontSize: 12, marginTop: 16, padding: 6 }}>
+                Skip
+              </button>
+            </div>
+          ) : (
+            <div className="fade">
+              <div className="mono" style={{ fontSize: 11, letterSpacing: 3, color: GOLD, textTransform: "uppercase", marginBottom: 10 }}>Your setup</div>
+              <h1 className="disp" style={{ fontSize: 31, fontWeight: 480, margin: "0 0 14px", letterSpacing: -0.3, lineHeight: 1.12 }}>
+                Here's how Smart Trade <span style={{ color: GOLD_BRIGHT, fontStyle: "italic" }}>helps you</span>.
+              </h1>
+              <div style={{ ...GLASS, padding: 20, marginBottom: 18 }}>
+                <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                  <div style={{ width: 34, height: 34, borderRadius: "50%", background: GOLD + "14", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Target size={16} color={GOLD} />
+                  </div>
+                  <p className="mono" style={{ margin: 0, fontSize: 13.5, color: TEXT, lineHeight: 1.65 }}>
+                    On {assetLabel[quizAnswers[1] ?? 3]}, you'll get {outcomes[quizAnswers[2] ?? 3].charAt(0).toLowerCase() + outcomes[quizAnswers[2] ?? 3].slice(1)}
+                  </p>
+                </div>
+                <p className="mono" style={{ margin: "14px 0 0", fontSize: 12.5, color: MUTE, lineHeight: 1.6 }}>
+                  {levelLine[quizAnswers[0] ?? 1]}
+                </p>
+              </div>
+              <button
+                onClick={goSignup}
+                className="btn mono"
+                style={{
+                  width: "100%", padding: "16px 20px", background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})`,
+                  color: INK, border: "none", borderRadius: 999, fontSize: 14.5, fontWeight: 700, letterSpacing: 0.4,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 10, boxShadow: `0 10px 40px -10px ${GOLD}88`,
+                }}
+              >
+                Create my account
+                <span style={{ width: 26, height: 26, borderRadius: "50%", background: INK, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <ChevronRight size={15} color={GOLD_BRIGHT} />
+                </span>
+              </button>
+              <p className="mono" style={{ fontSize: 11, color: "#5A564E", marginTop: 12, lineHeight: 1.6, textAlign: "center" }}>
+                Educational chart-reading tool. Not financial advice, not a signal to trade.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     );

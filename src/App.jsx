@@ -1785,7 +1785,10 @@ export default function SmartTrade() {
       }
       complete();
       await new Promise((r) => setTimeout(r, 220));
-      if (onFree) setAccess((a) => (a ? { ...a, freeAvailable: false } : a));
+      // A read with confidence 0 means the screenshot wasn't usable; the
+      // server gives the free read back, so keep it available here too.
+      const unusable = Number(parsed?.confidence) === 0;
+      if (onFree && !unusable) setAccess((a) => (a ? { ...a, freeAvailable: false } : a));
       setResult(parsed);
     } catch (err) {
       console.error("Analysis failed after retries:", err);
@@ -3191,6 +3194,12 @@ export default function SmartTrade() {
             <div className="mono" style={{ fontSize: 12.5, color: MUTE }}>{freeSession && access.freeAvailable ? "or click to browse · uses your free read" : "or click to browse"}</div>
             <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleFile(e.target.files[0])} />
           </div>
+        )}
+
+        {!image && freeSession && access.freeAvailable && (
+          <p className="mono" style={{ fontSize: 11.5, color: MUTE, lineHeight: 1.6, margin: "10px 2px 0" }}>
+            Tip: use a clean TradingView screenshot with the candles clearly visible. If a chart can't be read, your free analysis isn't used up.
+          </p>
         )}
 
         {!image && !freeSession && (

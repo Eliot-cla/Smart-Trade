@@ -3100,7 +3100,7 @@ export default function SmartTrade() {
       {sharedStyles}
       <div style={{ position: "absolute", top: -70, left: "50%", transform: "translateX(-50%)", width: 520, height: 400, background: `radial-gradient(circle, ${GOLD}14, transparent 70%)`, pointerEvents: "none" }} />
       <div className="app-shell">
-        {renderSidebar("app")}
+        {!freeSession && renderSidebar("app")}
         <div className="main-content">
       <div className={result ? "news-container" : ""} style={{ maxWidth: result ? undefined : 620, margin: "0 auto", padding: "48px 20px 90px", position: "relative" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
@@ -3193,7 +3193,7 @@ export default function SmartTrade() {
           </div>
         )}
 
-        {!image && (
+        {!image && !freeSession && (
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             {!freeSession && (
             <button

@@ -110,6 +110,22 @@ function validateFreeRequest(body) {
   return null;
 }
 
+// A read that comes back with confidence 0 means "this isn't a usable chart"
+// (see the system prompt). The person shouldn't lose their free read over
+// a bad screenshot, so the credit is given back and they can retry.
+function isUnusableRead(data) {
+  try {
+    const text = (data?.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
+    const a = text.indexOf("{");
+    const b = text.lastIndexOf("}");
+    if (a === -1 || b <= a) return true; // no readable JSON at all
+    const parsed = JSON.parse(text.slice(a, b + 1));
+    return Number(parsed.confidence) === 0;
+  } catch {
+    return true;
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" });
@@ -177,7 +193,7 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json().catch(() => ({ error: "bad_upstream_response" }));
-    if (!response.ok && usedFreeCredit) await refundFreeCredit(user.id);
+    if (usedFreeCredit && (!response.ok || isUnusableRead(data))) await refundFreeCredit(user.id);
     res.status(response.status).json(data);
   } catch (err) {
     console.error("Anthropic proxy error:", err);

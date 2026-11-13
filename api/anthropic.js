@@ -126,6 +126,35 @@ function isUnusableRead(data) {
   }
 }
 
+// Logs what each chart read concluded (never the image or the text of the
+// read) so the owner can see, in Supabase, how many reads come back
+// long / short / neutral and how confident they are. Failures here must
+// never affect the person's analysis.
+async function logAnalysis(userId, isFree, data) {
+  try {
+    const text = (data?.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
+    const a = text.indexOf("{");
+    const b = text.lastIndexOf("}");
+    if (a === -1 || b <= a) return;
+    const parsed = JSON.parse(text.slice(a, b + 1));
+    if (!parsed || typeof parsed.bias !== "string") return; // not a chart read (e.g. news digest)
+    await fetch(`${SUPABASE_URL}/rest/v1/analysis_log`, {
+      method: "POST",
+      headers: serviceHeaders({ Prefer: "return=minimal" }),
+      body: JSON.stringify({
+        user_id: userId,
+        free: isFree,
+        bias: String(parsed.bias).toLowerCase().slice(0, 30),
+        confidence: Number.isFinite(Number(parsed.confidence)) ? Math.round(Number(parsed.confidence)) : null,
+        asset: parsed.asset ? String(parsed.asset).slice(0, 60) : null,
+        timeframe: parsed.detectedTimeframe ? String(parsed.detectedTimeframe).slice(0, 30) : null,
+      }),
+    });
+  } catch (err) {
+    console.error("Analysis log failed:", err);
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" });
@@ -194,6 +223,7 @@ export default async function handler(req, res) {
 
     const data = await response.json().catch(() => ({ error: "bad_upstream_response" }));
     if (usedFreeCredit && (!response.ok || isUnusableRead(data))) await refundFreeCredit(user.id);
+    if (response.ok) await logAnalysis(user.id, usedFreeCredit, data);
     res.status(response.status).json(data);
   } catch (err) {
     console.error("Anthropic proxy error:", err);

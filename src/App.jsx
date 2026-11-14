@@ -854,6 +854,286 @@ function StarRating({ value = 4.5, size = 20 }) {
   );
 }
 
+// ---------- Result add-ons: position-size calculator + follow-up questions ----------
+
+function numsOf(value) {
+  if (value === null || value === undefined) return [];
+  const list = Array.isArray(value) ? value : typeof value === "object" ? Object.values(value) : [value];
+  return list.map((v) => extractNumber(v)).filter((n) => n !== null);
+}
+
+function fmtNum(n, maxDecimals = 4) {
+  if (!Number.isFinite(n)) return "—";
+  const abs = Math.abs(n);
+  const d = abs >= 1000 ? 0 : abs >= 10 ? 2 : maxDecimals;
+  return n.toLocaleString("en-US", { maximumFractionDigits: d });
+}
+
+// Collapsible card header: closed by default, tap to open.
+function ToggleHeader({ icon, label, hint, open, onClick }) {
+  return (
+    <button
+      type="button" onClick={onClick} aria-expanded={open} className="btn mono"
+      style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "transparent", border: "none", padding: 0, textAlign: "left", color: GOLD }}
+    >
+      <span>
+        <span style={{ fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}>{icon} {label}</span>
+        {hint && !open && <span style={{ display: "block", fontSize: 12, color: MUTE, marginTop: 6, letterSpacing: 0, textTransform: "none", fontWeight: 400 }}>{hint}</span>}
+      </span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={GOLD} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transition: "transform .2s ease", transform: open ? "rotate(180deg)" : "none" }} aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+    </button>
+  );
+}
+
+const calcInputStyle = {
+  width: "100%", boxSizing: "border-box", padding: "10px 12px", background: INK, color: TEXT,
+  border: `1px solid ${LINE}`, borderRadius: 6, fontSize: 14, outline: "none",
+};
+
+function PositionCalculator({ result }) {
+  const [open, setOpen] = useState(false);
+  const read = (k, fallback) => { try { return localStorage.getItem(k) || fallback; } catch { return fallback; } };
+  const [capital, setCapital] = useState(() => read("st_calc_capital", ""));
+  const [riskPct, setRiskPct] = useState(() => read("st_calc_risk", "1"));
+  const save = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+
+  const entries = numsOf(result.entry);
+  const entry = entries.length ? entries.reduce((a, b) => a + b, 0) / entries.length : null;
+  const sl = extractNumber(result.sl);
+  const tps = numsOf(result.tp);
+  const bias = String(result.bias || "").toLowerCase();
+
+  const cap = parseFloat(String(capital).replace(/,/g, "."));
+  const rp = parseFloat(String(riskPct).replace(/,/g, "."));
+  const haveLevels = entry !== null && sl !== null && entry !== sl;
+  const sideOk = !haveLevels || bias === "neutral" || (bias === "long" ? sl < entry : bias === "short" ? sl > entry : true);
+  const perUnit = haveLevels ? Math.abs(entry - sl) : null;
+  const riskAmt = cap > 0 && rp > 0 ? (cap * rp) / 100 : null;
+  const units = riskAmt !== null && perUnit ? riskAmt / perUnit : null;
+
+  return (
+    <div style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 8, padding: "16px 20px", marginTop: 14 }}>
+      <ToggleHeader icon={<Coins size={12} />} label="Position size calculator" hint="Work out how many units to trade for the risk you choose." open={open} onClick={() => setOpen((o) => !o)} />
+      {open && (<div style={{ marginTop: 12 }}>
+      <p className="mono" style={{ fontSize: 12, color: MUTE, lineHeight: 1.6, margin: "0 0 14px" }}>
+        Enter your account size and how much of it you accept to risk on this idea. The size is worked out from the entry and stop-loss of this read.
+      </p>
+
+      {!haveLevels ? (
+        <p className="mono" style={{ fontSize: 12.5, color: MUTE, margin: 0 }}>This read doesn't have both an entry and a stop-loss, so a position size can't be calculated.</p>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <label className="mono" style={{ fontSize: 11, color: MUTE }}>
+              Account size
+              <input className="mono" inputMode="decimal" placeholder="e.g. 5000" value={capital}
+                onChange={(e) => { setCapital(e.target.value); save("st_calc_capital", e.target.value); }} style={{ ...calcInputStyle, marginTop: 5 }} />
+            </label>
+            <label className="mono" style={{ fontSize: 11, color: MUTE }}>
+              Risk per trade (%)
+              <input className="mono" inputMode="decimal" placeholder="1" value={riskPct}
+                onChange={(e) => { setRiskPct(e.target.value); save("st_calc_risk", e.target.value); }} style={{ ...calcInputStyle, marginTop: 5 }} />
+            </label>
+          </div>
+
+          {!sideOk && (
+            <p className="mono" style={{ fontSize: 12, color: RED, margin: "12px 0 0" }}>The stop-loss of this read sits on the wrong side of the entry, so the numbers below aren't reliable.</p>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
+            <div style={{ background: INK, border: `1px solid ${GOLD}44`, borderRadius: 7, padding: "12px 12px" }}>
+              <div className="mono" style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: GOLD_BRIGHT, fontWeight: 700, marginBottom: 6 }}>Position size</div>
+              <div className="disp" style={{ fontSize: 21, fontWeight: 600, color: TEXT, lineHeight: 1.1 }}>{units !== null ? fmtNum(units) : "—"}</div>
+              <div className="mono" style={{ fontSize: 10.5, color: MUTE, marginTop: 4 }}>units / coins / shares</div>
+            </div>
+            <div style={{ background: INK, border: `1px solid ${RED}44`, borderRadius: 7, padding: "12px 12px" }}>
+              <div className="mono" style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: RED, fontWeight: 700, marginBottom: 6 }}>Amount at risk</div>
+              <div className="disp" style={{ fontSize: 21, fontWeight: 600, color: TEXT, lineHeight: 1.1 }}>{riskAmt !== null ? fmtNum(riskAmt, 2) : "—"}</div>
+              <div className="mono" style={{ fontSize: 10.5, color: MUTE, marginTop: 4 }}>if the stop-loss is hit</div>
+            </div>
+          </div>
+
+          {units !== null && (
+            <div className="mono" style={{ fontSize: 12, color: MUTE, lineHeight: 1.7, marginTop: 12 }}>
+              Position value ≈ <span style={{ color: TEXT }}>{fmtNum(units * entry, 2)}</span> at an entry of <span style={{ color: TEXT }}>{fmtNum(entry, 2)}</span> (stop-loss {fmtNum(sl, 2)}, distance {fmtNum(perUnit, 2)}).
+            </div>
+          )}
+
+          {tps.length > 0 && (
+            <div className="mono" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+              {tps.map((tp, i) => (
+                <span key={i} style={{ fontSize: 11.5, color: TEXT, background: GREEN + "14", border: `1px solid ${GREEN}33`, borderRadius: 999, padding: "4px 10px" }}>
+                  TP{i + 1} · reward-to-risk {fmtNum(Math.abs(tp - entry) / perUnit, 2)}R
+                </span>
+              ))}
+            </div>
+          )}
+
+          <p className="mono" style={{ fontSize: 11, color: "#5A564E", lineHeight: 1.6, margin: "12px 0 0" }}>
+            Indicative arithmetic only, based on the levels above — not advice. On forex, CFDs or futures, convert units to lots with your broker's contract size, and check leverage and fees.
+          </p>
+        </>
+      )}
+      </div>)}
+    </div>
+  );
+}
+
+const FOLLOWUP_SYSTEM = `You answer follow-up questions about ONE technical chart read that this tool already produced (the JSON read and, when available, the chart image are provided by the user).
+Rules:
+- Answer only about this chart, this read and general chart-reading concepts used in it (structure, support/resistance, risk management). If the question is about something else, say briefly that you can only discuss this chart.
+- Be concise: at most about 110 words, plain text, no markdown headings, no JSON, no bullet spam.
+- Never give certainty or guarantees about price. Use hypothesis language. Never tell the person to open, enter or close a trade; you may explain what a level or confirmation would mean.
+- You are not a financial advisor; do not recommend position sizes beyond general risk-management concepts.
+- If the answer isn't visible or can't be inferred from the read or the image, say so instead of guessing.`;
+
+const FOLLOWUP_MAX = 5;
+const FOLLOWUP_SUGGESTIONS = ["Why this stop-loss?", "What would invalidate this read?", "What should I wait for before entering?"];
+
+function FollowUpChat({ result, imageBase64, mediaType, getToken, enabled, onUpgrade, onAsked }) {
+  const [open, setOpen] = useState(false);
+  const [turns, setTurns] = useState([]); // [{ role: "user"|"assistant", text }]
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const endRef = useRef(null);
+
+  const asked = turns.filter((t) => t.role === "user").length;
+  const left = FOLLOWUP_MAX - asked;
+
+  useEffect(() => { endRef.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" }); }, [turns, busy]);
+
+  const ask = async (question) => {
+    const q = String(question || "").trim().slice(0, 400);
+    if (!q || busy || left <= 0) return;
+    setErr(null);
+    setInput("");
+    const nextTurns = [...turns, { role: "user", text: q }];
+    setTurns(nextTurns);
+    setBusy(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("no_session");
+      const { marketContext, ...readForModel } = result || {};
+      const firstContent = [];
+      if (imageBase64 && mediaType) firstContent.push({ type: "image", source: { type: "base64", media_type: mediaType, data: imageBase64 } });
+      firstContent.push({ type: "text", text: `This is the chart read produced earlier:\n${JSON.stringify(readForModel)}\nI will now ask follow-up questions about it.` });
+      const messages = [
+        { role: "user", content: firstContent },
+        { role: "assistant", content: "Understood. Ask your question about this chart read." },
+        ...nextTurns.map((t) => ({ role: t.role, content: t.text })),
+      ];
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 40000);
+      let res;
+      try {
+        res = await fetch("/api/anthropic", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, system: FOLLOWUP_SYSTEM, messages }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+      if (res.status === 403) throw new Error("not_allowed");
+      if (!res.ok) throw new Error(`api_error_${res.status}`);
+      const data = await res.json();
+      const text = (data?.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+      if (!text) throw new Error("empty");
+      setTurns((t) => [...t, { role: "assistant", text }]);
+      if (onAsked) onAsked();
+    } catch (e) {
+      const m = String(e?.message || e);
+      setErr(
+        m === "not_allowed" ? "Follow-up questions are included with a paid plan."
+        : e?.name === "AbortError" ? "That took too long — please try again."
+        : "Couldn't get an answer right now — please try again."
+      );
+      setTurns((t) => t.slice(0, -1)); // drop the unanswered question so it can be re-asked
+      setInput(q);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const box = { background: PANEL, border: `1px solid ${LINE}`, borderRadius: 8, padding: "16px 20px", marginTop: 14 };
+  const title = (
+    <ToggleHeader icon={<MessageCircle size={12} />} label="Ask about this read" hint="Ask why a level was chosen or what would invalidate it." open={open} onClick={() => setOpen((o) => !o)} />
+  );
+
+  if (!enabled) {
+    return (
+      <div style={box}>
+        {title}
+        {open && (<div style={{ marginTop: 12 }}>
+        <p className="mono" style={{ fontSize: 12.5, color: MUTE, lineHeight: 1.6, margin: "0 0 12px" }}>
+          Ask why a level was chosen, what would invalidate the read, or what to wait for — answered from your own chart. Included with every paid plan.
+        </p>
+        {onUpgrade && (
+          <button onClick={onUpgrade} className="btn mono" style={{ padding: "10px 16px", background: "transparent", border: `1px solid ${GOLD}`, borderRadius: 999, color: GOLD_BRIGHT, fontSize: 12.5, fontWeight: 600 }}>
+            See plans
+          </button>
+        )}
+        </div>)}
+      </div>
+    );
+  }
+
+  return (
+    <div style={box}>
+      {title}
+      {open && (<div style={{ marginTop: 12 }}>
+      <p className="mono" style={{ fontSize: 12, color: MUTE, lineHeight: 1.6, margin: "0 0 12px" }}>
+        Questions about this chart only. {left > 0 ? `${left} question${left === 1 ? "" : "s"} left on this read.` : "You've used all questions for this read."}
+      </p>
+
+      {turns.length === 0 && left > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+          {FOLLOWUP_SUGGESTIONS.map((s) => (
+            <button key={s} onClick={() => ask(s)} disabled={busy} className="btn mono" style={{ padding: "7px 12px", background: INK, border: `1px solid ${LINE}`, borderRadius: 999, color: TEXT, fontSize: 12 }}>
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {turns.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
+          {turns.map((t, i) => (
+            <div key={i} className="mono" style={{
+              alignSelf: t.role === "user" ? "flex-end" : "flex-start", maxWidth: "92%", whiteSpace: "pre-wrap",
+              fontSize: 13, lineHeight: 1.6, padding: "10px 13px", borderRadius: 10,
+              background: t.role === "user" ? GOLD + "1F" : INK, border: `1px solid ${t.role === "user" ? GOLD + "44" : LINE}`, color: TEXT,
+            }}>{t.text}</div>
+          ))}
+          {busy && <div className="mono" style={{ fontSize: 12, color: MUTE, display: "flex", alignItems: "center", gap: 6 }}><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Reading your chart…</div>}
+          <div ref={endRef} />
+        </div>
+      )}
+
+      {err && <p className="mono" style={{ fontSize: 12, color: RED, margin: "0 0 10px" }}>{err}</p>}
+
+      {left > 0 && (
+        <form onSubmit={(e) => { e.preventDefault(); ask(input); }} style={{ display: "flex", gap: 8 }}>
+          <input
+            className="mono" value={input} onChange={(e) => setInput(e.target.value)} maxLength={400} disabled={busy}
+            placeholder="Ask a question about this chart…" style={{ ...calcInputStyle, flex: 1, fontSize: 13 }}
+          />
+          <button type="submit" disabled={busy || !input.trim()} className="btn mono" style={{
+            padding: "0 16px", borderRadius: 6, border: "none", fontSize: 13, fontWeight: 700,
+            background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})`, color: INK, opacity: busy || !input.trim() ? 0.55 : 1,
+          }}>Ask</button>
+        </form>
+      )}
+      <p className="mono" style={{ fontSize: 11, color: "#5A564E", lineHeight: 1.6, margin: "10px 0 0" }}>
+        Educational explanations of the read — not advice, not an instruction to trade.
+      </p>
+      </div>)}
+    </div>
+  );
+}
+
 export default function SmartTrade() {
   // Only visible to you: open the site with ?dev=1 at the end of the URL
   // (e.g. https://your-site.vercel.app/?dev=1) to reveal the testing skip
@@ -1183,9 +1463,14 @@ export default function SmartTrade() {
       const token = await getValidAccessToken();
       if (!token) return;
       const a = await loadAccess(token);
+      if (!a.unknown && !a.hasPlan) track("free_app_view", { free_available: a.freeAvailable });
       if (!a.unknown && !a.hasPlan && !a.freeAvailable && !result) setView("pricing");
     })();
   }, [view, session?.accessToken]);
+
+  useEffect(() => {
+    if (view === "pricing" && session?.userId) track("pricing_view", { free: freeSession });
+  }, [view]);
 
   useEffect(() => {
     if (view !== "settings" || !session?.accessToken) return;
@@ -1228,7 +1513,20 @@ export default function SmartTrade() {
   const [portalLoading, setPortalLoading] = useState(false);
   const [portalError, setPortalError] = useState(null);
 
-  const startCheckout = async (priceId) => {
+  // Fire-and-forget funnel logging (never blocks or breaks the UI).
+  const track = (event, meta) => {
+    (async () => {
+      try {
+        if (!session?.userId) return;
+        const token = await getValidAccessToken();
+        if (!token) return;
+        await supabaseRest("funnel_events", { method: "POST", accessToken: token, body: { user_id: session.userId, event, meta: meta || null } });
+      } catch {}
+    })();
+  };
+
+  const startCheckout = async (priceId, planId) => {
+    track("checkout_click", { plan: planId || null, free: freeSession });
     setCheckoutError(null);
     if (!session?.accessToken) {
       setCheckoutError("Please sign in first.");
@@ -1248,6 +1546,7 @@ export default function SmartTrade() {
       window.location.href = data.url; // hand off to Stripe's own hosted page
     } catch (err) {
       console.error("Checkout failed:", err);
+      track("checkout_error", { plan: planId || null });
       setCheckoutError("Couldn't start checkout — please try again.");
       setCheckoutLoading(null);
     }
@@ -1414,6 +1713,7 @@ export default function SmartTrade() {
     setError(null);
     setResult(null);
     setSampleId(null);
+    track("own_chart_picked");
     try {
       const { dataUrl, base64, mediaType: mt } = await resizeImage(file);
       setImageBase64(base64);
@@ -1436,6 +1736,7 @@ export default function SmartTrade() {
     setImageBase64(null);
     setSampleId(id);
     setImage(smp.image);
+    track("sample_picked", { id });
   };
 
   const handleDrop = (e) => {
@@ -1729,6 +2030,7 @@ export default function SmartTrade() {
       await new Promise((r) => setTimeout(r, 6000));
       complete();
       await new Promise((r) => setTimeout(r, 220));
+      track("result_seen", { kind: "sample", id: sampleId });
       setResult(FREE_SAMPLES[sampleId].result);
       setLoading(false);
       return;
@@ -1788,6 +2090,7 @@ export default function SmartTrade() {
       // A read with confidence 0 means the screenshot wasn't usable; the
       // server gives the free read back, so keep it available here too.
       const unusable = Number(parsed?.confidence) === 0;
+      track("result_seen", { kind: onFree ? "own_free" : "own_paid", unusable });
       if (onFree && !unusable) setAccess((a) => (a ? { ...a, freeAvailable: false } : a));
       setResult(parsed);
     } catch (err) {
@@ -2042,7 +2345,7 @@ export default function SmartTrade() {
                   ))}
                 </div>
                 <button
-                  onClick={() => startCheckout(p.priceId)}
+                  onClick={() => startCheckout(p.priceId, p.id)}
                   disabled={checkoutLoading === p.priceId}
                   className="btn mono"
                   style={{
@@ -3456,6 +3759,18 @@ export default function SmartTrade() {
                 )}
               </div>
 
+              <PositionCalculator result={result} />
+              <FollowUpChat
+                key={(result.rationale || "").slice(0, 40) + (image || "").length}
+                result={result}
+                imageBase64={sampleId ? null : imageBase64}
+                mediaType={mediaType}
+                getToken={getValidAccessToken}
+                enabled={!freeSession && !sampleId}
+                onUpgrade={() => setView("pricing")}
+                onAsked={() => track("followup_asked")}
+              />
+
               {/* Disclaimer */}
               <div className="mono" style={{ display: "flex", gap: 10, padding: 15, background: PANEL, border: `1px solid ${LINE}`, borderRadius: 6, fontSize: 12, color: MUTE, lineHeight: 1.6, marginTop: 14 }}>
                 <AlertTriangle size={15} color={MUTE} style={{ flexShrink: 0, marginTop: 1 }} />
@@ -3513,7 +3828,7 @@ export default function SmartTrade() {
               {freeSession ? (
                 <>
                   <button
-                    onClick={() => setView("pricing")}
+                    onClick={() => { track("keep_reading_click", { after: sampleId ? "sample" : "own" }); setView("pricing"); }}
                     className="btn mono"
                     style={{ marginTop: 18, width: "100%", maxWidth: 420, marginLeft: "auto", marginRight: "auto", display: "block", padding: "15px 20px", background: `linear-gradient(135deg, ${GOLD_BRIGHT}, ${GOLD})`, color: INK, border: "none", borderRadius: 999, fontSize: 14.5, fontWeight: 700, letterSpacing: 0.3 }}
                   >
@@ -3521,7 +3836,7 @@ export default function SmartTrade() {
                   </button>
                   {access.freeAvailable && (
                     <button
-                      onClick={reset}
+                      onClick={() => { track("use_own_after_sample_click"); reset(); }}
                       className="btn mono"
                       style={{ marginTop: 10, width: "100%", maxWidth: 420, marginLeft: "auto", marginRight: "auto", display: "block", padding: "13px 20px", background: "transparent", border: `1px solid ${LINE}`, borderRadius: 999, color: TEXT, fontSize: 13.5, fontWeight: 600 }}
                     >

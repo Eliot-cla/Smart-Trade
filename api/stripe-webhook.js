@@ -68,6 +68,28 @@ function planFromPriceId(priceId) {
   return map[priceId] || "unknown";
 }
 
+// Reads the live subscription from Stripe (needs STRIPE_SECRET_KEY, which
+// the checkout function already uses). Returns null if it can't be read.
+async function fetchStripeSubscription(subscriptionId) {
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey || !subscriptionId) return null;
+  try {
+    const r = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
+      headers: { Authorization: `Bearer ${secretKey}` },
+    });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
+
+// Newer Stripe API versions moved the period end onto the subscription item.
+function periodEndIso(sub) {
+  const ts = sub?.current_period_end ?? sub?.items?.data?.[0]?.current_period_end;
+  return ts ? new Date(ts * 1000).toISOString() : null;
+}
+
 // Falls back to looking up the account by Stripe customer id whenever a
 // subscription event doesn't carry our own metadata.user_id — this
 // happens for subscriptions changed through Stripe's own customer
@@ -122,16 +144,26 @@ export default async function handler(req, res) {
         const session = event.data.object;
         const userId = session.client_reference_id || session.metadata?.user_id;
         if (userId) {
+          // For a real subscription, ask Stripe directly for its current
+          // state instead of waiting for the customer.subscription.* events:
+          // Stripe doesn't guarantee their order or delivery, and a missed
+          // event used to leave the plan stuck on "pending".
+          let live = null;
+          if (session.mode === "subscription" && session.subscription) {
+            live = await fetchStripeSubscription(session.subscription);
+          }
           await upsertSubscription({
             user_id: userId,
             stripe_customer_id: session.customer,
             stripe_subscription_id: session.subscription || null,
             // For one-time packs there's no ongoing subscription object,
             // so we label the plan directly from the price ID we stashed
-            // in metadata at checkout — the customer.subscription.*
-            // events below handle real subscriptions instead.
-            plan: session.mode === "payment" ? planFromPriceId(session.metadata?.price_id) : "pending",
-            status: "active",
+            // in metadata at checkout.
+            plan: session.mode === "payment"
+              ? planFromPriceId(session.metadata?.price_id)
+              : live ? planFromPriceId(live.items?.data?.[0]?.price?.id) : "pending",
+            status: live ? live.status : "active",
+            current_period_end: live ? periodEndIso(live) : null,
             updated_at: new Date().toISOString(),
           });
         }
@@ -149,7 +181,7 @@ export default async function handler(req, res) {
             stripe_subscription_id: sub.id,
             plan: planFromPriceId(priceId),
             status: sub.status,
-            current_period_end: sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
+            current_period_end: periodEndIso(sub),
             updated_at: new Date().toISOString(),
           });
         } else {

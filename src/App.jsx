@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Upload, TrendingUp, TrendingDown, Minus, AlertTriangle, Loader2, X, ArrowRight, Target, ShieldAlert, Crosshair, Layers, Clock, Globe2, Grid3x3, Camera, Gauge, ShieldCheck, ChevronRight, Newspaper, Coins, LineChart, Landmark, MessageCircle, ArrowLeft, RefreshCw, Share2, Download, Settings, LogOut, Check, FileText } from "lucide-react";
+import { Upload, TrendingUp, TrendingDown, Minus, AlertTriangle, Loader2, X, ArrowRight, Target, ShieldAlert, Crosshair, Layers, Clock, Globe2, Grid3x3, Camera, Gauge, ShieldCheck, ChevronRight, Newspaper, Coins, LineChart, Landmark, MessageCircle, ArrowLeft, RefreshCw, Share2, Download, Settings, LogOut, Check, FileText, BookOpen } from "lucide-react";
 
 const GOLD = "#C9A648";
 const GOLD_BRIGHT = "#E8C973";
@@ -357,7 +357,7 @@ async function callClaudeVision(imageBase64, mediaType, includeContext, signal, 
   };
   if (includeContext) body.tools = [{ type: "web_search_20250305", name: "web_search" }];
 
-  const response = await fetch("/api/anthropic", {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -447,7 +447,7 @@ JSON shape:
 }`;
 
 async function fetchDailyNews(signal, accessToken) {
-  const response = await fetch("/api/anthropic", {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -885,6 +885,123 @@ function ToggleHeader({ icon, label, hint, open, onClick }) {
   );
 }
 
+const LEARN_LESSONS = [
+  {
+    title: "Reading a Smart Trade analysis",
+    hint: "What each part of a read means, and how to use it.",
+    blocks: [
+      { p: "Every analysis is a structured opinion about one chart at one moment. It is a starting point for your own thinking, not an order to place." },
+      { h: "The parts" },
+      { ul: [
+        "Bias: the direction the chart currently favours (long, short, or no clear signal). \"No clear signal\" is a valid and often useful answer.",
+        "Confidence: how clean the picture is. A low number means the chart is messy or conflicting, so be more careful, not more aggressive.",
+        "Entry, stop loss and targets: the levels the read is built around. The stop is where the idea is proven wrong. The targets are where price may react.",
+        "Key levels and structure: the zones the read relies on. Check them on your own chart before you trust anything else.",
+      ] },
+      { h: "How to use it" },
+      { ul: [
+        "Open your own chart and find the levels mentioned. If you can't see them, don't take the trade.",
+        "Check that the stop sits at a level that really invalidates the idea, and that the distance to the first target is worth the distance to the stop.",
+        "Remember that a read is only valid for the timeframe and the moment of the screenshot. If price has moved a lot since, the read is stale.",
+      ] },
+    ],
+  },
+  {
+    title: "The language of structure",
+    hint: "Support, resistance, BOS, CHoCH, liquidity sweeps, order blocks, FVG.",
+    blocks: [
+      { p: "These terms describe how price moves between zones where many orders sit. Learn what each one means, then look for them on past charts before you use them live." },
+      { dl: [
+        ["Support / resistance", "A zone where price has repeatedly paused or reversed. Support sits below price, resistance above. Think of zones, not exact lines."],
+        ["Market structure", "The sequence of swing highs and lows. Higher highs and higher lows describe an uptrend; lower highs and lower lows describe a downtrend."],
+        ["BOS (break of structure)", "Price breaks the last swing high in an uptrend, or the last swing low in a downtrend. It suggests the current trend is continuing."],
+        ["CHoCH (change of character)", "The first break against the prevailing trend, for example price making a lower low after a series of higher lows. It is an early warning that the trend may be changing, not a confirmation."],
+        ["Liquidity sweep", "Price briefly pushes through an obvious high or low, where many stop orders sit, then reverses back. It is often read as stops being collected before a move the other way."],
+        ["Order block", "The last opposite candle before a strong move. Some traders watch it as a zone where price may react when it returns."],
+        ["FVG (fair value gap)", "A gap between candles where price moved so fast that one side of the market barely traded. Price often returns to fill part of it."],
+      ] },
+      { p: "None of these are guarantees. They are ways of describing what price has already done, and they work best when several of them point to the same area." },
+    ],
+  },
+  {
+    title: "Managing risk",
+    hint: "Position size, stop loss, and the calculator under each read.",
+    blocks: [
+      { p: "Most of the difference between lasting and blowing up an account is risk management, not finding a better entry." },
+      { ul: [
+        "Decide in advance how much of your account you are willing to lose on one trade. Many people keep this around 1%, and it is your choice to make.",
+        "The stop loss defines the risk per unit. Position size follows from it: size = amount you accept to lose ÷ distance between entry and stop.",
+        "The position size calculator under each read does this arithmetic for you. Enter your capital and risk percentage, and it shows the size for the entry and stop of that read.",
+        "Never move a stop further away to avoid being stopped out. If the idea is wrong, accept the small loss.",
+        "A series of losses is normal in any approach. Small, consistent risk is what lets you stay in the game through it.",
+        "Check the reward-to-risk ratio before entering. If the first target is closer than the stop, the trade needs to win very often to be worth taking.",
+      ] },
+    ],
+  },
+  {
+    title: "Common mistakes",
+    hint: "What to avoid, especially at the beginning.",
+    blocks: [
+      { ul: [
+        "Risking too much on one trade. Oversized positions turn an ordinary loss into a serious one.",
+        "Trading without a stop loss, or removing it once price moves against you.",
+        "Taking every signal. Not trading is a position too, and \"no clear signal\" means exactly that.",
+        "Chasing price after a big move has already happened.",
+        "Revenge trading: trying to win back a loss immediately, usually with a larger size.",
+        "Ignoring the higher timeframe. A setup against the larger trend has a lower chance of working.",
+        "Trading around major news without realising it. Spreads widen and price can jump through stops.",
+        "Using money you can't afford to lose.",
+        "Judging a method on three trades. Keep a record and review it over a meaningful sample. The Track Record page is there for that.",
+      ] },
+      { p: "Smart Trade provides educational chart analysis only. It is not financial advice, and trading involves a real risk of losing money." },
+    ],
+  },
+];
+
+function LearnLessons() {
+  const [openIdx, setOpenIdx] = useState(-1);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {LEARN_LESSONS.map((l, i) => {
+        const open = openIdx === i;
+        return (
+          <div key={l.title} style={{ background: PANEL, border: `1px solid ${open ? GOLD + "55" : LINE}`, borderRadius: 8, padding: "16px 16px" }}>
+            <ToggleHeader
+              icon={<span style={{ color: MUTE }}>{String(i + 1).padStart(2, "0")}</span>}
+              label={l.title} hint={l.hint} open={open}
+              onClick={() => setOpenIdx(open ? -1 : i)}
+            />
+            {open && (
+              <div className="fade" style={{ marginTop: 14, fontSize: 14, lineHeight: 1.65, color: TEXT + "DD" }}>
+                {l.blocks.map((b, j) => {
+                  if (b.p) return <p key={j} style={{ margin: "0 0 12px" }}>{b.p}</p>;
+                  if (b.h) return <div key={j} className="mono" style={{ fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", color: GOLD, margin: "16px 0 8px", fontWeight: 600 }}>{b.h}</div>;
+                  if (b.ul) return (
+                    <ul key={j} style={{ margin: "0 0 12px", paddingLeft: 18, display: "flex", flexDirection: "column", gap: 8 }}>
+                      {b.ul.map((t, k) => <li key={k}>{t}</li>)}
+                    </ul>
+                  );
+                  if (b.dl) return (
+                    <div key={j} style={{ display: "flex", flexDirection: "column", gap: 12, margin: "0 0 12px" }}>
+                      {b.dl.map(([term, def]) => (
+                        <div key={term}>
+                          <div style={{ color: GOLD_BRIGHT, fontWeight: 600, marginBottom: 2 }}>{term}</div>
+                          <div>{def}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                  return null;
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const calcInputStyle = {
   width: "100%", boxSizing: "border-box", padding: "10px 12px", background: INK, color: TEXT,
   border: `1px solid ${LINE}`, borderRadius: 6, fontSize: 14, outline: "none",
@@ -1027,7 +1144,7 @@ function FollowUpChat({ result, imageBase64, mediaType, getToken, enabled, onUpg
       const timer = setTimeout(() => controller.abort(), 40000);
       let res;
       try {
-        res = await fetch("/api/anthropic", {
+        res = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, system: FOLLOWUP_SYSTEM, messages }),
@@ -1304,9 +1421,9 @@ export default function SmartTrade() {
   useEffect(() => {
     (async () => {
       try {
-        const raw = localStorage.getItem("session");
-        if (raw) {
-          const saved = JSON.parse(raw);
+        const r = await window.storage.get("session", false);
+        if (r?.value) {
+          const saved = JSON.parse(r.value);
           if (saved?.accessToken) setSession(saved);
         }
       } catch {
@@ -1317,7 +1434,7 @@ export default function SmartTrade() {
 
   const persistSession = async (s) => {
     try {
-      localStorage.setItem("session", JSON.stringify(s));
+      await window.storage.set("session", JSON.stringify(s), false);
     } catch {
       // non-blocking — worst case the person has to log in again next time
     }
@@ -1421,7 +1538,7 @@ export default function SmartTrade() {
 
   const logOut = () => {
     setSession(null);
-    try { localStorage.removeItem("session"); } catch {}
+    window.storage.delete("session", false).catch(() => {});
     setView("welcome");
   };
 
@@ -2196,6 +2313,7 @@ export default function SmartTrade() {
       { key: "app", label: "Chart Analysis", Icon: Camera, onClick: () => setView("app") },
       { key: "news", label: "Market Pulse", Icon: Newspaper, onClick: () => { setView("news"); loadNews(false); } },
       { key: "history", label: "Track Record", Icon: Clock, onClick: () => { setView("history"); loadHistory(); } },
+      { key: "learn", label: "Learn", Icon: BookOpen, onClick: () => setView("learn") },
       { key: "settings", label: "Settings", Icon: Settings, onClick: () => setView("settings") },
     ];
     return (
@@ -2786,6 +2904,37 @@ export default function SmartTrade() {
   }
 
   // ---------- HISTORY / TRACK RECORD ----------
+  if (view === "learn") {
+    return (
+      <div style={{ minHeight: "100vh", background: INK, color: TEXT, fontFamily: "'Inter', sans-serif", position: "relative", overflow: "hidden" }}>
+        {sharedStyles}
+        <div style={{ position: "absolute", top: -60, left: "30%", transform: "translateX(-50%)", width: 460, height: 380, background: `radial-gradient(circle, ${GOLD}16, transparent 70%)`, pointerEvents: "none" }} />
+        <div className="app-shell">
+          {!freeSession && renderSidebar("learn")}
+          <div className="main-content">
+            <div className="news-container" style={{ margin: "0 auto", padding: "48px 20px 90px", position: "relative" }}>
+              <div className="brand-mobile" style={{ marginBottom: 18 }}><Brand size={34} /></div>
+              <button onClick={() => setView("app")} className="btn mono" style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: MUTE, fontSize: 12.5, padding: 0, marginBottom: 22 }}>
+                <ArrowLeft size={14} /> Back
+              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: GOLD }} />
+                <span className="mono" style={{ fontSize: 11, letterSpacing: 3, color: GOLD, textTransform: "uppercase" }}>Learn</span>
+              </div>
+              <h1 className="disp" style={{ fontSize: 32, fontWeight: 480, margin: "6px 0 10px", letterSpacing: -0.3 }}>
+                Read the chart, not the hype.
+              </h1>
+              <p style={{ color: MUTE, fontSize: 14, lineHeight: 1.6, margin: "0 0 24px" }}>
+                Four short lessons to help you understand what an analysis is telling you, and how to handle risk. Educational only, not financial advice.
+              </p>
+              <LearnLessons />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (view === "history") {
     const wins = historyItems.filter((h) => h.outcome === "win").length;
     const losses = historyItems.filter((h) => h.outcome === "loss").length;
@@ -3503,6 +3652,21 @@ export default function SmartTrade() {
           <p className="mono" style={{ fontSize: 11.5, color: MUTE, lineHeight: 1.6, margin: "10px 2px 0" }}>
             Tip: use a clean TradingView screenshot with the candles clearly visible. If a chart can't be read, your free analysis isn't used up.
           </p>
+        )}
+
+        {!image && (
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <button
+              onClick={() => setView("learn")}
+              className="btn mono"
+              style={{
+                flex: 1, padding: "12px 12px", background: PANEL, border: `1px solid ${LINE}`,
+                borderRadius: 6, color: TEXT, fontSize: 12.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+              }}
+            >
+              <BookOpen size={14} color={GOLD} /> Learn: how to read a chart
+            </button>
+          </div>
         )}
 
         {!image && !freeSession && (
